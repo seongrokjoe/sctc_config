@@ -224,6 +224,7 @@ public class FileLoadService
             };
 
             bool headerSkipped = false;
+            bool allDisplayOnly = true;
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];
@@ -237,8 +238,24 @@ public class FileLoadService
                 }
 
                 model.DataLineIndices.Add(i);
+
+                var cols = line.Split(',');
+                if (cols.Length > 9)
+                {
+                    if (cols[7].Trim() != "DisplayOnly:1" ||
+                        cols[8].Trim() != "DisplayOnly:1" ||
+                        cols[9].Trim() != "DisplayOnly:1")
+                    {
+                        allDisplayOnly = false;
+                    }
+                }
+                else
+                {
+                    allDisplayOnly = false;
+                }
             }
 
+            model.InitialIsDisplayOnly = model.DataLineIndices.Count > 0 && allDisplayOnly;
             result.AlarmFiles.Add(model);
         }
     }

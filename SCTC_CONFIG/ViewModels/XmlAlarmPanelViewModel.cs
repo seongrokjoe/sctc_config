@@ -16,7 +16,7 @@ public partial class XmlAlarmFileItemViewModel : ObservableObject
     public XmlAlarmFileItemViewModel(XmlAlarmFileModel model)
     {
         Model = model;
-        _isDisplayOnly = false;
+        _isDisplayOnly = model.InitialIsDisplayOnly;
     }
 }
 

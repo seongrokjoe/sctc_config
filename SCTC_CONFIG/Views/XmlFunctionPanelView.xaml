@@ -23,9 +23,8 @@
                                            Visibility="{Binding WarningVisible, Converter={StaticResource BoolToVisibilityConverter}}"
                                            ToolTip="시뮬레이션 값이 통일되지 않았습니다."/>
                                 <ToggleButton Grid.Column="2"
-                                              Style="{StaticResource ValueToggle}"
+                                              Style="{StaticResource ValueToggleLower}"
                                               IsChecked="{Binding IsSimulation, Mode=OneWay}"
-                                              Content="{Binding IsSimulation, Converter={StaticResource BoolToToggleTextConverter}, ConverterParameter=lower}"
                                               Click="ToggleButton_Click"/>
                             </Grid>
                         </Border>

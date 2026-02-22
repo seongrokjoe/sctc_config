@@ -198,12 +198,22 @@ public class XmlFileLoadService
         {
             var (doc, encoding) = ParseXml(xmlFile);
 
+            var stopRunValues = doc.Descendants("StopMode_Run").Select(e => e.Value.Trim()).ToList();
+            var stopSetupValues = doc.Descendants("StopMode_Setup").Select(e => e.Value.Trim()).ToList();
+            var stopDefaultValues = doc.Descendants("StopMode_Default").Select(e => e.Value.Trim()).ToList();
+
+            bool isDisplayOnly = stopRunValues.Count > 0 &&
+                stopRunValues.All(v => v == "DisplayOnly:1") &&
+                stopSetupValues.All(v => v == "DisplayOnly:1") &&
+                stopDefaultValues.All(v => v == "DisplayOnly:1");
+
             result.AlarmFiles.Add(new XmlAlarmFileModel
             {
                 FilePath = xmlFile,
                 FileName = Path.GetFileName(xmlFile),
                 Document = doc,
                 FileEncoding = encoding,
+                InitialIsDisplayOnly = isDisplayOnly,
             });
         }
     }

@@ -9,4 +9,5 @@ public class XmlAlarmFileModel
     public string FileName { get; set; } = string.Empty;
     public XDocument Document { get; set; } = null!;
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
+    public bool InitialIsDisplayOnly { get; set; }
 }

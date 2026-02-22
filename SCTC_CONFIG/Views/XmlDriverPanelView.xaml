@@ -25,10 +25,9 @@
                                 <!-- Row 2: NeedLoad toggle -->
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                                     <TextBlock Text="NeedLoad" Style="{StaticResource SectionLabel}"/>
-                                    <ToggleButton Style="{StaticResource ValueToggle}"
+                                    <ToggleButton Style="{StaticResource ValueToggleLower}"
                                                   IsChecked="{Binding NeedLoad}"
-                                                  IsEnabled="{Binding HasNeedLoad}"
-                                                  Content="{Binding NeedLoad, Converter={StaticResource BoolToToggleTextConverter}, ConverterParameter=lower}"/>
+                                                  IsEnabled="{Binding HasNeedLoad}"/>
                                 </StackPanel>
                                 <!-- Row 3: Args -->
                                 <StackPanel Orientation="Horizontal">

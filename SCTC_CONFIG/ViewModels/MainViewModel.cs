@@ -16,7 +16,7 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoadCommand))]
-    private string _folderPath = string.Empty;
+    private string _folderPath = @"D:\K12_SCTC\SCTCApplication\dat\clean_csv";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]

@@ -25,7 +25,6 @@
                                 <ToggleButton Grid.Column="2"
                                               Style="{StaticResource ValueToggle}"
                                               IsChecked="{Binding IsSimulation, Mode=OneWay}"
-                                              Content="{Binding IsSimulation, Converter={StaticResource BoolToToggleTextConverter}}"
                                               Click="ToggleButton_Click"/>
                             </Grid>
                         </Border>

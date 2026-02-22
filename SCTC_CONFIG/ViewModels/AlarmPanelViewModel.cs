@@ -16,7 +16,7 @@ public partial class AlarmFileItemViewModel : ObservableObject
     public AlarmFileItemViewModel(AlarmFileModel model)
     {
         Model = model;
-        _isDisplayOnly = false; // always start unchecked
+        _isDisplayOnly = model.InitialIsDisplayOnly;
     }
 }
 

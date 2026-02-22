@@ -18,9 +18,8 @@
                                 <TextBlock Grid.Column="0" Text="{Binding Key}"
                                            Style="{StaticResource KeyLabel}"/>
                                 <ToggleButton Grid.Column="1"
-                                              Style="{StaticResource ValueToggle}"
-                                              IsChecked="{Binding IsEnabled}"
-                                              Content="{Binding IsEnabled, Converter={StaticResource BoolToToggleTextConverter}, ConverterParameter=lower}"/>
+                                              Style="{StaticResource ValueToggleLower}"
+                                              IsChecked="{Binding IsEnabled}"/>
                             </Grid>
                         </Border>
                     </DataTemplate>

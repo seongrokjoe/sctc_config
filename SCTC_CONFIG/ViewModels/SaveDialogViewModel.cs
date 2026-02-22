@@ -7,7 +7,7 @@ public partial class SaveDialogViewModel : ObservableObject
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTextBoxEnabled))]
-    private bool _noBackup;
+    private bool _noBackup = true;
 
     [ObservableProperty]
     private string _backupFolderName = string.Empty;

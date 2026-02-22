@@ -24,18 +24,18 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="경로" Foreground="#A0AEC0"
+                <TextBlock Grid.Column="0" Text="Path" Foreground="#A0AEC0"
                            VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" FontWeight="Medium"/>
                 <TextBox Grid.Column="1" Width="380" Height="28" VerticalContentAlignment="Center"
                          Padding="6,0" FontSize="12"
                          Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"/>
 
-                <Button Grid.Column="3" Content="찾아보기" Style="{StaticResource ToolbarButton}"
+                <Button Grid.Column="3" Content="Browse" Style="{StaticResource ToolbarButton}"
                         Command="{Binding BrowseCommand}" Margin="8,0,4,0"/>
-                <Button Grid.Column="4" Content="로드" Style="{StaticResource ToolbarButton}"
+                <Button Grid.Column="4" Content="Load" Style="{StaticResource ToolbarButton}"
                         Command="{Binding LoadCommand}" FontWeight="SemiBold"/>
 
-                <Button Grid.Column="6" Content="저장" Style="{StaticResource ToolbarButton}"
+                <Button Grid.Column="6" Content="Save" Style="{StaticResource ToolbarButton}"
                         Command="{Binding SaveCommand}" FontWeight="SemiBold"
                         Background="#48BB78" Foreground="White" BorderThickness="0"/>
             </Grid>

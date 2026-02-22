@@ -10,4 +10,5 @@ public class AlarmFileModel
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
     public string LineEnding { get; set; } = "\r\n";
     public List<int> DataLineIndices { get; set; } = new();
+    public bool InitialIsDisplayOnly { get; set; }
 }

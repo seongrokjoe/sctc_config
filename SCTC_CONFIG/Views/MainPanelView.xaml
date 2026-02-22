@@ -19,8 +19,7 @@
                                            Style="{StaticResource KeyLabel}"/>
                                 <ToggleButton Grid.Column="1"
                                               Style="{StaticResource ValueToggle}"
-                                              IsChecked="{Binding IsEnabled}"
-                                              Content="{Binding IsEnabled, Converter={StaticResource BoolToToggleTextConverter}}"/>
+                                              IsChecked="{Binding IsEnabled}"/>
                             </Grid>
                         </Border>
                     </DataTemplate>
