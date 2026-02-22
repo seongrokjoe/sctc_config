@@ -1,4 +1,4 @@
-using SCTC_CONFIG.ViewModels;
+﻿using SCTC_CONFIG.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;

@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SCTC_CONFIG.Models;
 using System.Collections.ObjectModel;
 using System.Text;

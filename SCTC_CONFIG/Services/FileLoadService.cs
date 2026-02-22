@@ -1,4 +1,4 @@
-using SCTC_CONFIG.Models;
+﻿using SCTC_CONFIG.Models;
 using System.IO;
 using System.Text;
 

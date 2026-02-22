@@ -1,4 +1,4 @@
-namespace SCTC_CONFIG.Models;
+﻿namespace SCTC_CONFIG.Models;
 
 public class XmlDriverRowModel
 {

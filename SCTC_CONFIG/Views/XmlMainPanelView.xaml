@@ -1,4 +1,4 @@
-<UserControl x:Class="SCTC_CONFIG.Views.XmlMainPanelView"
+﻿<UserControl x:Class="SCTC_CONFIG.Views.XmlMainPanelView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <DockPanel>

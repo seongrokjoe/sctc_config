@@ -1,4 +1,4 @@
-<Application x:Class="SCTC_CONFIG.App"
+﻿<Application x:Class="SCTC_CONFIG.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:converters="clr-namespace:SCTC_CONFIG.Converters"
