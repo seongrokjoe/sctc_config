@@ -1,0 +1,145 @@
+<Application x:Class="SCTC_CONFIG.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:SCTC_CONFIG.Converters"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- Converters -->
+        <converters:BoolToToggleTextConverter x:Key="BoolToToggleTextConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+
+        <!-- Color Palette -->
+        <Color x:Key="PrimaryDark">#2D3748</Color>
+        <Color x:Key="CsvAccent">#2B6CB0</Color>
+        <Color x:Key="XmlAccent">#2F855A</Color>
+        <Color x:Key="SurfaceLight">#F7FAFC</Color>
+        <Color x:Key="BorderMedium">#CBD5E0</Color>
+
+        <SolidColorBrush x:Key="PrimaryDarkBrush" Color="{StaticResource PrimaryDark}"/>
+        <SolidColorBrush x:Key="CsvAccentBrush" Color="{StaticResource CsvAccent}"/>
+        <SolidColorBrush x:Key="XmlAccentBrush" Color="{StaticResource XmlAccent}"/>
+        <SolidColorBrush x:Key="SurfaceLightBrush" Color="{StaticResource SurfaceLight}"/>
+        <SolidColorBrush x:Key="BorderMediumBrush" Color="{StaticResource BorderMedium}"/>
+
+        <!-- Global Font -->
+        <Style TargetType="Window">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style TargetType="UserControl">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- CSV Panel Header -->
+        <Style x:Key="CsvPanelHeader" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CsvAccentBrush}"/>
+            <Setter Property="Padding" Value="10,7"/>
+        </Style>
+        <Style x:Key="CsvPanelHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- XML Panel Header -->
+        <Style x:Key="XmlPanelHeader" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource XmlAccentBrush}"/>
+            <Setter Property="Padding" Value="10,7"/>
+        </Style>
+        <Style x:Key="XmlPanelHeaderText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <!-- Toolbar Button -->
+        <Style x:Key="ToolbarButton" TargetType="Button">
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="MinWidth" Value="60"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Toggle Button (uniform) -->
+        <Style x:Key="ValueToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="64"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <!-- Editable TextBox -->
+        <Style x:Key="ArgTextBox" TargetType="TextBox">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderMediumBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Item Row Container -->
+        <Style x:Key="ItemRow" TargetType="Border">
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#EDF2F7"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Key Label (readonly name) -->
+        <Style x:Key="KeyLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="#2D3748"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Driver Name -->
+        <Style x:Key="DriverName" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#1A202C"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Driver FileName (secondary) -->
+        <Style x:Key="DriverFileName" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5"/>
+            <Setter Property="Foreground" Value="#718096"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+
+        <!-- File list item name -->
+        <Style x:Key="FileListName" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="#2D3748"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+
+        <!-- Subdued label -->
+        <Style x:Key="SubduedLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#A0AEC0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Section sub-label (NeedLoad, Arg row) -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Foreground" Value="#A0AEC0"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Application.Resources>
+</Application>

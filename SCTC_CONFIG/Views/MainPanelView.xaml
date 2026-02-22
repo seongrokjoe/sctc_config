@@ -1,0 +1,31 @@
+<UserControl x:Class="SCTC_CONFIG.Views.MainPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Style="{StaticResource CsvPanelHeader}">
+            <TextBlock Text="Main" Style="{StaticResource CsvPanelHeaderText}"/>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
+            <ItemsControl ItemsSource="{Binding Items}" Margin="0">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource ItemRow}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Key}"
+                                           Style="{StaticResource KeyLabel}"/>
+                                <ToggleButton Grid.Column="1"
+                                              Style="{StaticResource ValueToggle}"
+                                              IsChecked="{Binding IsEnabled}"
+                                              Content="{Binding IsEnabled, Converter={StaticResource BoolToToggleTextConverter}}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>
