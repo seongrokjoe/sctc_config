@@ -1,4 +1,5 @@
-﻿using SCTC_CONFIG.Models;
+﻿using SCTC_CONFIG.Helpers;
+using SCTC_CONFIG.Models;
 using System.IO;
 using System.Text;
 
@@ -239,7 +240,7 @@ public class FileLoadService
 
                 model.DataLineIndices.Add(i);
 
-                var cols = line.Split(',');
+                var cols = CsvParser.ParseLine(line);
                 if (cols.Length > 9)
                 {
                     if (cols[7].Trim() != "DisplayOnly:1" ||

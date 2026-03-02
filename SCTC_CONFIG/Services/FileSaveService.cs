@@ -1,4 +1,5 @@
-﻿using SCTC_CONFIG.ViewModels;
+﻿using SCTC_CONFIG.Helpers;
+using SCTC_CONFIG.ViewModels;
 using System.IO;
 
 namespace SCTC_CONFIG.Services;
@@ -111,13 +112,13 @@ public class FileSaveService
             foreach (int idx in item.Model.DataLineIndices)
             {
                 if (idx >= lines.Count) continue;
-                var cols = lines[idx].Split(',').ToList();
+                var cols = CsvParser.ParseLine(lines[idx]).ToList();
                 while (cols.Count <= 9) cols.Add(string.Empty);
 
                 cols[7] = "DisplayOnly:1";
                 cols[8] = "DisplayOnly:1";
                 cols[9] = "DisplayOnly:1";
-                lines[idx] = string.Join(",", cols);
+                lines[idx] = CsvParser.JoinLine(cols);
             }
 
             File.WriteAllText(item.Model.FilePath, string.Join(item.Model.LineEnding, lines), item.Model.FileEncoding);
