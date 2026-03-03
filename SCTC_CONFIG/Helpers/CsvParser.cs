@@ -12,10 +12,11 @@ public static class CsvParser
     {
         var fields = new List<string>();
         int i = 0;
+        bool pendingEmpty = false;
 
-        while (i <= line.Length)
+        while (i < line.Length)
         {
-            if (i == line.Length) { fields.Add(string.Empty); break; }
+            pendingEmpty = false;
 
             if (line[i] == '"')
             {
@@ -33,16 +34,20 @@ public static class CsvParser
                     else { sb.Append(line[i]); i++; }
                 }
                 fields.Add(sb.ToString());
-                if (i < line.Length && line[i] == ',') i++;
+                if (i < line.Length && line[i] == ',') { i++; pendingEmpty = true; }
             }
             else
             {
                 int start = i;
                 while (i < line.Length && line[i] != ',') i++;
                 fields.Add(line.Substring(start, i - start));
-                if (i < line.Length) i++;
+                if (i < line.Length) { i++; pendingEmpty = true; }
             }
         }
+
+        // trailing comma가 있었거나 빈 라인이면 마지막 빈 필드 추가
+        if (pendingEmpty || fields.Count == 0)
+            fields.Add(string.Empty);
 
         return fields.ToArray();
     }
