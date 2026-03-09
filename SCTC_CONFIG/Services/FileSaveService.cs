@@ -112,13 +112,13 @@ public class FileSaveService
             foreach (int idx in item.Model.DataLineIndices)
             {
                 if (idx >= lines.Count) continue;
-                var cols = CsvParser.ParseLine(lines[idx]).ToList();
-                while (cols.Count <= 9) cols.Add(string.Empty);
+                if (!AlarmCsvLine.TryParse(lines[idx], item.Model.HeaderColumnCount, out var parsedLine, out string errorMessage))
+                {
+                    throw new InvalidOperationException(
+                        $"Alarm CSV 저장 실패: {item.Model.FilePath} ({idx + 1}행){Environment.NewLine}{errorMessage}");
+                }
 
-                cols[7] = "DisplayOnly:1";
-                cols[8] = "DisplayOnly:1";
-                cols[9] = "DisplayOnly:1";
-                lines[idx] = CsvParser.JoinLine(cols);
+                lines[idx] = parsedLine.ReplaceDisplayOnlyFields("DisplayOnly:1");
             }
 
             File.WriteAllText(item.Model.FilePath, string.Join(item.Model.LineEnding, lines), item.Model.FileEncoding);

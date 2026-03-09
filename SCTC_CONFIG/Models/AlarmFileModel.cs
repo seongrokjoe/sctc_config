@@ -9,6 +9,7 @@ public class AlarmFileModel
     public List<string> Lines { get; set; } = new();
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
     public string LineEnding { get; set; } = "\r\n";
+    public int HeaderColumnCount { get; set; }
     public List<int> DataLineIndices { get; set; } = new();
     public bool InitialIsDisplayOnly { get; set; }
 }

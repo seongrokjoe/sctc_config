@@ -61,8 +61,8 @@ public class FileLoadService
 
         // Alarm/*.csv optional
         string alarmDir = Path.Combine(rootPath, "Alarm");
-        if (Directory.Exists(alarmDir))
-            LoadAlarmFiles(alarmDir, result);
+        if (Directory.Exists(alarmDir) && !LoadAlarmFiles(alarmDir, result))
+            return result;
 
         result.Success = true;
         return result;
@@ -201,7 +201,7 @@ public class FileLoadService
         }
     }
 
-    private static void LoadAlarmFiles(string alarmDir, LoadResult result)
+    private static bool LoadAlarmFiles(string alarmDir, LoadResult result)
     {
         var csvFiles = Directory.GetFiles(alarmDir, "*.csv")
             .OrderBy(f => Path.GetFileName(f))
@@ -234,23 +234,23 @@ public class FileLoadService
 
                 if (!headerSkipped)
                 {
+                    model.HeaderColumnCount = lines[i].Split(',').Length;
                     headerSkipped = true;
                     continue;
                 }
 
                 model.DataLineIndices.Add(i);
 
-                var cols = CsvParser.ParseLine(line);
-                if (cols.Length > 9)
+                if (!AlarmCsvLine.TryParse(line, model.HeaderColumnCount, out var parsedLine, out string errorMessage))
                 {
-                    if (cols[7].Trim() != "DisplayOnly:1" ||
-                        cols[8].Trim() != "DisplayOnly:1" ||
-                        cols[9].Trim() != "DisplayOnly:1")
-                    {
-                        allDisplayOnly = false;
-                    }
+                    result.Success = false;
+                    result.ErrorMessage = $"Alarm CSV 로드 실패: {csvFile} ({i + 1}행)\n{errorMessage}";
+                    return false;
                 }
-                else
+
+                if (parsedLine.GetField(AlarmCsvLine.DisplayOnlyActionColumnIndex).Trim() != "DisplayOnly:1" ||
+                    parsedLine.GetField(AlarmCsvLine.DisplayOnlyRecoveryColumnIndex).Trim() != "DisplayOnly:1" ||
+                    parsedLine.GetField(AlarmCsvLine.DisplayOnlyNoteColumnIndex).Trim() != "DisplayOnly:1")
                 {
                     allDisplayOnly = false;
                 }
@@ -259,5 +259,7 @@ public class FileLoadService
             model.InitialIsDisplayOnly = model.DataLineIndices.Count > 0 && allDisplayOnly;
             result.AlarmFiles.Add(model);
         }
+
+        return true;
     }
 }
