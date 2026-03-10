@@ -65,11 +65,17 @@ public partial class MainViewModel : ObservableObject
         }
 
         CsvTab.MainPanel.Items.Clear();
+        CsvTab.MainPanel.ScdItems.Clear();
         CsvTab.MainPanel.Lines = result.MainLines;
         CsvTab.MainPanel.FileEncoding = result.MainEncoding;
         CsvTab.MainPanel.LineEnding = result.MainLineEnding;
+        CsvTab.MainPanel.ScdLines = result.ScdLines;
+        CsvTab.MainPanel.ScdFileEncoding = result.ScdEncoding;
+        CsvTab.MainPanel.ScdLineEnding = result.ScdLineEnding;
         foreach (var entry in result.MainEntries)
             CsvTab.MainPanel.Items.Add(new MainEntryItemViewModel(entry));
+        foreach (var entry in result.ScdEntries)
+            CsvTab.MainPanel.ScdItems.Add(new MainEntryItemViewModel(entry));
 
         CsvTab.DriverPanel.Items.Clear();
         CsvTab.DriverPanel.Lines = result.DriverLines;
@@ -103,11 +109,17 @@ public partial class MainViewModel : ObservableObject
 
         // Main panel
         XmlTab.MainPanel.Items.Clear();
+        XmlTab.MainPanel.ScdItems.Clear();
         XmlTab.MainPanel.Document = result.MainDocument;
         XmlTab.MainPanel.FilePath = result.MainFilePath;
         XmlTab.MainPanel.FileEncoding = result.MainEncoding;
+        XmlTab.MainPanel.ScdDocument = result.ScdDocument;
+        XmlTab.MainPanel.ScdFilePath = result.ScdFilePath;
+        XmlTab.MainPanel.ScdFileEncoding = result.ScdEncoding;
         foreach (var entry in result.MainEntries)
             XmlTab.MainPanel.Items.Add(new XmlMainEntryItemViewModel(entry));
+        foreach (var entry in result.ScdEntries)
+            XmlTab.MainPanel.ScdItems.Add(new XmlMainEntryItemViewModel(entry));
 
         // Driver panel
         XmlTab.DriverPanel.Items.Clear();

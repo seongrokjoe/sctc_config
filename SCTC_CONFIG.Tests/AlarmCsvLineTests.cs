@@ -74,6 +74,7 @@ public sealed class AlarmCsvLineTests : IDisposable
         Directory.CreateDirectory(alarmDir);
 
         File.WriteAllText(Path.Combine(_tempRoot, "General.csv"), "UseStandaloneMode,TRUE", Encoding.UTF8);
+        WriteRequiredScdCsv();
 
         const string header = "AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note,Enabled";
         const string data = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,abc 'abc \"\"abc\"\", abc \"\"abc\"\" abc,DisplayOnly:1,DisplayOnly:1,DisplayOnly:1,TRUE";
@@ -95,6 +96,7 @@ public sealed class AlarmCsvLineTests : IDisposable
         Directory.CreateDirectory(alarmDir);
 
         File.WriteAllText(Path.Combine(_tempRoot, "General.csv"), "UseStandaloneMode,TRUE", Encoding.UTF8);
+        WriteRequiredScdCsv();
 
         const string header = "AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note";
         const string invalidData = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,abc 'abc \"\"abc\"\", abc \"\"abc\"\" abc,EMGStop:1";
@@ -106,6 +108,19 @@ public sealed class AlarmCsvLineTests : IDisposable
         Assert.False(result.Success);
         Assert.Contains("Alarm CSV 로드 실패", result.ErrorMessage);
         Assert.Contains("AlarmCase.csv", result.ErrorMessage);
+    }
+
+    private void WriteRequiredScdCsv()
+    {
+        string scdDir = Path.Combine(_tempRoot, "SCD");
+        Directory.CreateDirectory(scdDir);
+        File.WriteAllText(
+            Path.Combine(scdDir, "SCDGeneral.csv"),
+            string.Join("\r\n",
+                "SimulationSCD,true",
+                "SimulationFunction,true",
+                "SimulationDriver,true"),
+            Encoding.UTF8);
     }
 
     public void Dispose()

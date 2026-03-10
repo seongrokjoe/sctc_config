@@ -15,6 +15,11 @@ public class LoadResult
     public Encoding MainEncoding { get; set; } = Encoding.UTF8;
     public string MainLineEnding { get; set; } = "\r\n";
 
+    public List<MainEntryModel> ScdEntries { get; set; } = new();
+    public List<string> ScdLines { get; set; } = new();
+    public Encoding ScdEncoding { get; set; } = Encoding.UTF8;
+    public string ScdLineEnding { get; set; } = "\r\n";
+
     public List<DriverRowModel> DriverRows { get; set; } = new();
     public List<string> DriverLines { get; set; } = new();
     public Encoding DriverEncoding { get; set; } = Encoding.UTF8;
@@ -34,6 +39,13 @@ public class FileLoadService
         "UseFunctionSimulationMode"
     };
 
+    private static readonly string[] TargetScdKeys =
+    {
+        "SimulationSCD",
+        "SimulationFunction",
+        "SimulationDriver"
+    };
+
     public LoadResult Load(string rootPath)
     {
         var result = new LoadResult();
@@ -48,6 +60,16 @@ public class FileLoadService
         }
 
         LoadMainCsv(generalPath, result);
+
+        string scdPath = Path.Combine(rootPath, "SCD", "SCDGeneral.csv");
+        if (!File.Exists(scdPath))
+        {
+            result.Success = false;
+            result.ErrorMessage = $"SCDGeneral.csv 파일을 찾을 수 없습니다:\n{scdPath}";
+            return result;
+        }
+
+        LoadScdCsv(scdPath, result);
 
         // Driver/Driver.csv is optional
         string driverPath = Path.Combine(rootPath, "Driver", "Driver.csv");
@@ -70,32 +92,57 @@ public class FileLoadService
 
     private static void LoadMainCsv(string filePath, LoadResult result)
     {
+        var parsed = LoadToggleCsvEntries(filePath, TargetMainKeys);
+        result.MainEntries = parsed.entries;
+        result.MainLines = parsed.lines;
+        result.MainEncoding = parsed.encoding;
+        result.MainLineEnding = parsed.lineEnding;
+    }
+
+    private static void LoadScdCsv(string filePath, LoadResult result)
+    {
+        var parsed = LoadToggleCsvEntries(filePath, TargetScdKeys);
+        result.ScdEntries = parsed.entries;
+        result.ScdLines = parsed.lines;
+        result.ScdEncoding = parsed.encoding;
+        result.ScdLineEnding = parsed.lineEnding;
+    }
+
+    private static (List<MainEntryModel> entries, List<string> lines, Encoding encoding, string lineEnding) LoadToggleCsvEntries(
+        string filePath,
+        IEnumerable<string> targetKeys)
+    {
         using var reader = new StreamReader(filePath, detectEncodingFromByteOrderMarks: true);
         string rawText = reader.ReadToEnd();
-        result.MainEncoding = reader.CurrentEncoding;
-        result.MainLineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
-        result.MainLines = rawText.Split(new[] { result.MainLineEnding }, StringSplitOptions.None).ToList();
+        Encoding encoding = reader.CurrentEncoding;
+        string lineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = rawText.Split(new[] { lineEnding }, StringSplitOptions.None).ToList();
+        var entries = new List<MainEntryModel>();
+        var keySet = new HashSet<string>(targetKeys, StringComparer.Ordinal);
 
-        for (int i = 0; i < result.MainLines.Count; i++)
+        for (int i = 0; i < lines.Count; i++)
         {
-            string line = result.MainLines[i];
+            string line = lines[i];
             if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith('#'))
                 continue;
 
             var columns = line.Split(',');
-            if (columns.Length < 2) continue;
+            if (columns.Length < 2)
+                continue;
 
             string key = columns[0].Trim();
-            if (TargetMainKeys.Contains(key))
+            if (!keySet.Contains(key))
+                continue;
+
+            entries.Add(new MainEntryModel
             {
-                result.MainEntries.Add(new MainEntryModel
-                {
-                    Key = key,
-                    Value = columns[1].Trim(),
-                    LineIndex = i
-                });
-            }
+                Key = key,
+                Value = columns[1].Trim(),
+                LineIndex = i
+            });
         }
+
+        return (entries, lines, encoding, lineEnding);
     }
 
     private static void LoadDriverCsv(string filePath, LoadResult result)

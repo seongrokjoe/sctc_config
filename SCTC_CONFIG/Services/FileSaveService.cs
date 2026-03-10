@@ -19,6 +19,9 @@ public class FileSaveService
         // 2. Save General.csv
         SaveMainCsv(rootPath, csvTab.MainPanel);
 
+        // 2-1. Save SCD/SCDGeneral.csv
+        SaveScdCsv(rootPath, csvTab.MainPanel);
+
         // 3. Save Driver/Driver.csv
         SaveDriverCsv(rootPath, csvTab.DriverPanel);
 
@@ -48,6 +51,38 @@ public class FileSaveService
 
         string filePath = Path.Combine(rootPath, "General.csv");
         File.WriteAllText(filePath, string.Join(panel.LineEnding, lines), panel.FileEncoding);
+    }
+
+    private static void SaveScdCsv(string rootPath, MainPanelViewModel panel)
+    {
+        if (panel.ScdLines.Count == 0) return;
+
+        var lines = new List<string>(panel.ScdLines);
+        bool anyChanged = false;
+
+        foreach (var item in panel.ScdItems)
+        {
+            if (item.LineIndex < 0 || item.LineIndex >= lines.Count)
+                continue;
+
+            var cols = lines[item.LineIndex].Split(',');
+            if (cols.Length < 2)
+                continue;
+
+            string newValue = item.IsEnabled ? "true" : "false";
+            if (cols[1] == newValue)
+                continue;
+
+            cols[1] = newValue;
+            lines[item.LineIndex] = string.Join(",", cols);
+            anyChanged = true;
+        }
+
+        if (!anyChanged)
+            return;
+
+        string filePath = Path.Combine(rootPath, "SCD", "SCDGeneral.csv");
+        File.WriteAllText(filePath, string.Join(panel.ScdLineEnding, lines), panel.ScdFileEncoding);
     }
 
     private static void SaveDriverCsv(string rootPath, DriverPanelViewModel panel)

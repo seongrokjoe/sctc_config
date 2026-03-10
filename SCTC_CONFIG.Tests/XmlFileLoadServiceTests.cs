@@ -23,8 +23,18 @@ public sealed class XmlFileLoadServiceTests : IDisposable
             $"  <ImagePath>ImageAXIS.ico{(char)0x1A}</ImagePath>",
             "</SctcConfig>"
         ]) + "\n";
+        const string scdXml = """
+<?xml version="1.0" encoding="utf-8"?>
+<SctcScd>
+  <SimulationSCD>true</SimulationSCD>
+  <SimulationSCDforEC>false</SimulationSCDforEC>
+  <SimulationFunction>true</SimulationFunction>
+  <SimulationDriver>true</SimulationDriver>
+</SctcScd>
+""";
 
         File.WriteAllText(Path.Combine(_tempRoot, "SCTC.xml"), xml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(Path.Combine(_tempRoot, "SCD.xml"), scdXml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         var service = new XmlFileLoadService();
         XmlLoadResult result = service.Load(_tempRoot);
@@ -44,6 +54,12 @@ public sealed class XmlFileLoadServiceTests : IDisposable
   <UseStandaloneMode>true</UseStandaloneMode>
 </SctcConfig>
 """;
+        const string scdXml = """
+<?xml version="1.0" encoding="utf-8"?>
+<SctcScd>
+  <SimulationSCD>true</SimulationSCD>
+</SctcScd>
+""";
         const string invalidDriverXml = """
 <?xml version="1.0" encoding="utf-8"?>
 <Root>
@@ -58,6 +74,7 @@ public sealed class XmlFileLoadServiceTests : IDisposable
         Directory.CreateDirectory(driverDir);
 
         File.WriteAllText(Path.Combine(_tempRoot, "SCTC.xml"), mainXml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(Path.Combine(_tempRoot, "SCD.xml"), scdXml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         File.WriteAllText(Path.Combine(driverDir, "Driver.xml"), invalidDriverXml, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         var service = new XmlFileLoadService();

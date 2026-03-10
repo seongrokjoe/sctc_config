@@ -24,8 +24,13 @@ public partial class MainEntryItemViewModel : ObservableObject
 public class MainPanelViewModel : ObservableObject
 {
     public ObservableCollection<MainEntryItemViewModel> Items { get; } = new();
+    public ObservableCollection<MainEntryItemViewModel> ScdItems { get; } = new();
 
     public List<string> Lines { get; set; } = new();
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
     public string LineEnding { get; set; } = "\r\n";
+
+    public List<string> ScdLines { get; set; } = new();
+    public Encoding ScdFileEncoding { get; set; } = Encoding.UTF8;
+    public string ScdLineEnding { get; set; } = "\r\n";
 }

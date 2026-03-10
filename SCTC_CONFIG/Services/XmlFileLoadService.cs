@@ -17,6 +17,11 @@ public class XmlLoadResult
     public string MainFilePath { get; set; } = string.Empty;
     public Encoding MainEncoding { get; set; } = Encoding.UTF8;
 
+    public List<XmlMainEntryModel> ScdEntries { get; set; } = new();
+    public XDocument? ScdDocument { get; set; }
+    public string ScdFilePath { get; set; } = string.Empty;
+    public Encoding ScdEncoding { get; set; } = Encoding.UTF8;
+
     // Driver (Driver/Driver.xml)
     public List<XmlDriverRowModel> DriverRows { get; set; } = new();
     public XDocument? DriverDocument { get; set; }
@@ -33,6 +38,7 @@ public class XmlLoadResult
 public class XmlFileLoadService
 {
     private static readonly string[] TargetMainKeys = { "UseStandaloneMode", "UseVirtualDriver" };
+    private static readonly string[] TargetScdKeys = { "SimulationSCD", "SimulationSCDforEC", "SimulationFunction", "SimulationDriver" };
 
     public XmlLoadResult Load(string rootPath)
     {
@@ -46,9 +52,18 @@ public class XmlFileLoadService
             return result;
         }
 
+        string scdPath = Path.Combine(rootPath, "SCD.xml");
+        if (!File.Exists(scdPath))
+        {
+            result.Success = false;
+            result.ErrorMessage = $"SCD.xml \uD30C\uC77C\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:\n{scdPath}";
+            return result;
+        }
+
         try
         {
             LoadMainXml(sctcPath, result);
+            LoadScdXml(scdPath, result);
 
             string driverPath = Path.Combine(rootPath, "Driver", "Driver.xml");
             if (File.Exists(driverPath))
@@ -178,19 +193,36 @@ public class XmlFileLoadService
         result.MainDocument = doc;
         result.MainFilePath = filePath;
         result.MainEncoding = encoding;
+        result.MainEntries = ExtractToggleEntries(doc, TargetMainKeys);
+    }
 
-        foreach (var key in TargetMainKeys)
+    private void LoadScdXml(string filePath, XmlLoadResult result)
+    {
+        var (doc, encoding) = ParseXml(filePath);
+        result.ScdDocument = doc;
+        result.ScdFilePath = filePath;
+        result.ScdEncoding = encoding;
+        result.ScdEntries = ExtractToggleEntries(doc, TargetScdKeys);
+    }
+
+    private static List<XmlMainEntryModel> ExtractToggleEntries(XDocument doc, IEnumerable<string> keys)
+    {
+        var entries = new List<XmlMainEntryModel>();
+
+        foreach (var key in keys)
         {
             var element = doc.Descendants(key).FirstOrDefault();
-            if (element != null)
+            if (element == null)
+                continue;
+
+            entries.Add(new XmlMainEntryModel
             {
-                result.MainEntries.Add(new XmlMainEntryModel
-                {
-                    Key = key,
-                    Value = element.Value.Trim().ToLower()
-                });
-            }
+                Key = key,
+                Value = element.Value.Trim().ToLower()
+            });
         }
+
+        return entries;
     }
 
     private void LoadDriverXml(string filePath, XmlLoadResult result)

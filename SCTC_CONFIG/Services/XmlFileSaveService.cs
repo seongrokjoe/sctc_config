@@ -10,6 +10,7 @@ public class XmlFileSaveService
     public void Save(string rootPath, XmlTabViewModel xmlTab)
     {
         SaveMainXml(xmlTab.MainPanel);
+        SaveScdXml(xmlTab.MainPanel);
         SaveDriverXml(xmlTab.DriverPanel);
         SaveFunctionFiles(xmlTab.FunctionPanel);
         SaveAlarmFiles(xmlTab.AlarmPanel);
@@ -33,6 +34,27 @@ public class XmlFileSaveService
 
         if (anyChanged)
             WriteXDocument(panel.Document, panel.FilePath, panel.FileEncoding);
+    }
+
+    private static void SaveScdXml(XmlMainPanelViewModel panel)
+    {
+        if (panel.ScdDocument == null)
+            return;
+
+        bool anyChanged = false;
+        foreach (var item in panel.ScdItems)
+        {
+            string newValue = item.IsEnabled ? "true" : "false";
+            var element = panel.ScdDocument.Descendants(item.Key).FirstOrDefault();
+            if (element != null && element.Value != newValue)
+            {
+                element.Value = newValue;
+                anyChanged = true;
+            }
+        }
+
+        if (anyChanged)
+            WriteXDocument(panel.ScdDocument, panel.ScdFilePath, panel.ScdFileEncoding);
     }
 
     private static void SaveDriverXml(XmlDriverPanelViewModel panel)
