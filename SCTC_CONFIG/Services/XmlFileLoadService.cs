@@ -1,6 +1,7 @@
 ﻿using SCTC_CONFIG.Models;
 using System.IO;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace SCTC_CONFIG.Services;
@@ -41,25 +42,34 @@ public class XmlFileLoadService
         if (!File.Exists(sctcPath))
         {
             result.Success = false;
-            result.ErrorMessage = $"SCTC.xml 파일을 찾을 수 없습니다:\n{sctcPath}";
+            result.ErrorMessage = $"SCTC.xml \uD30C\uC77C\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:\n{sctcPath}";
             return result;
         }
 
-        LoadMainXml(sctcPath, result);
+        try
+        {
+            LoadMainXml(sctcPath, result);
 
-        string driverPath = Path.Combine(rootPath, "Driver", "Driver.xml");
-        if (File.Exists(driverPath))
-            LoadDriverXml(driverPath, result);
+            string driverPath = Path.Combine(rootPath, "Driver", "Driver.xml");
+            if (File.Exists(driverPath))
+                LoadDriverXml(driverPath, result);
 
-        string functionDir = Path.Combine(rootPath, "Function");
-        if (Directory.Exists(functionDir))
-            LoadFunctionFiles(functionDir, result);
+            string functionDir = Path.Combine(rootPath, "Function");
+            if (Directory.Exists(functionDir))
+                LoadFunctionFiles(functionDir, result);
 
-        string alarmDir = Path.Combine(rootPath, "Alarm");
-        if (Directory.Exists(alarmDir))
-            LoadAlarmFiles(alarmDir, result);
+            string alarmDir = Path.Combine(rootPath, "Alarm");
+            if (Directory.Exists(alarmDir))
+                LoadAlarmFiles(alarmDir, result);
 
-        result.Success = true;
+            result.Success = true;
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.ErrorMessage = $"XML \uB85C\uB4DC \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4:\n{ex.Message}";
+        }
+
         return result;
     }
 
@@ -72,8 +82,94 @@ public class XmlFileLoadService
             rawText = reader.ReadToEnd();
             encoding = reader.CurrentEncoding;
         }
-        var doc = XDocument.Parse(rawText, LoadOptions.PreserveWhitespace);
-        return (doc, encoding);
+
+        string sanitizedText = RemoveInvalidXmlCharacters(rawText);
+
+        try
+        {
+            var doc = XDocument.Parse(sanitizedText, LoadOptions.PreserveWhitespace);
+            return (doc, encoding);
+        }
+        catch (XmlException ex)
+        {
+            throw new InvalidDataException(BuildXmlParseErrorMessage(filePath, ex), ex);
+        }
+    }
+
+    private static string RemoveInvalidXmlCharacters(string text)
+    {
+        StringBuilder? sanitized = null;
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            char ch = text[i];
+
+            if (char.IsHighSurrogate(ch))
+            {
+                if (i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                {
+                    if (sanitized != null)
+                    {
+                        sanitized.Append(ch);
+                        sanitized.Append(text[i + 1]);
+                    }
+
+                    i++;
+                    continue;
+                }
+
+                sanitized = EnsureSanitizedBuilder(sanitized, text, i);
+                continue;
+            }
+
+            if (char.IsLowSurrogate(ch))
+            {
+                sanitized = EnsureSanitizedBuilder(sanitized, text, i);
+                continue;
+            }
+
+            if (IsValidXmlCodePoint(ch))
+            {
+                if (sanitized != null)
+                    sanitized.Append(ch);
+
+                continue;
+            }
+
+            sanitized = EnsureSanitizedBuilder(sanitized, text, i);
+        }
+
+        return sanitized?.ToString() ?? text;
+    }
+
+    private static StringBuilder EnsureSanitizedBuilder(StringBuilder? builder, string originalText, int validPrefixLength)
+    {
+        if (builder != null)
+            return builder;
+
+        builder = new StringBuilder(originalText.Length);
+        builder.Append(originalText, 0, validPrefixLength);
+        return builder;
+    }
+
+    private static bool IsValidXmlCodePoint(int codePoint)
+    {
+        return codePoint == 0x09 ||
+               codePoint == 0x0A ||
+               codePoint == 0x0D ||
+               (codePoint >= 0x20 && codePoint <= 0xD7FF) ||
+               (codePoint >= 0xE000 && codePoint <= 0xFFFD) ||
+               (codePoint >= 0x10000 && codePoint <= 0x10FFFF);
+    }
+
+    private static string BuildXmlParseErrorMessage(string filePath, XmlException ex)
+    {
+        if (ex.LineNumber > 0 || ex.LinePosition > 0)
+        {
+            return $"XML \uD30C\uC77C\uC744 \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:\n{filePath}\n\uB77C\uC778 {ex.LineNumber}, \uC704\uCE58 {ex.LinePosition}\n{ex.Message}";
+        }
+
+        return $"XML \uD30C\uC77C\uC744 \uD30C\uC2F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4:\n{filePath}\n{ex.Message}";
     }
 
     private void LoadMainXml(string filePath, XmlLoadResult result)
