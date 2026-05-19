@@ -112,11 +112,7 @@ public class FileLoadService
         string filePath,
         IEnumerable<string> targetKeys)
     {
-        using var reader = new StreamReader(filePath, detectEncodingFromByteOrderMarks: true);
-        string rawText = reader.ReadToEnd();
-        Encoding encoding = reader.CurrentEncoding;
-        string lineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
-        var lines = rawText.Split(new[] { lineEnding }, StringSplitOptions.None).ToList();
+        var (lines, encoding, lineEnding) = ReadCsvFile(filePath);
         var entries = new List<MainEntryModel>();
         var keySet = new HashSet<string>(targetKeys, StringComparer.Ordinal);
 
@@ -147,11 +143,10 @@ public class FileLoadService
 
     private static void LoadDriverCsv(string filePath, LoadResult result)
     {
-        using var reader = new StreamReader(filePath, detectEncodingFromByteOrderMarks: true);
-        string rawText = reader.ReadToEnd();
-        result.DriverEncoding = reader.CurrentEncoding;
-        result.DriverLineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
-        result.DriverLines = rawText.Split(new[] { result.DriverLineEnding }, StringSplitOptions.None).ToList();
+        var (lines, encoding, lineEnding) = ReadCsvFile(filePath);
+        result.DriverEncoding = encoding;
+        result.DriverLineEnding = lineEnding;
+        result.DriverLines = lines;
 
         bool headerSkipped = false;
         for (int i = 0; i < result.DriverLines.Count; i++)
@@ -190,11 +185,7 @@ public class FileLoadService
 
         foreach (var csvFile in csvFiles)
         {
-            using var reader = new StreamReader(csvFile, detectEncodingFromByteOrderMarks: true);
-            string rawText = reader.ReadToEnd();
-            var encoding = reader.CurrentEncoding;
-            string lineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
-            var lines = rawText.Split(new[] { lineEnding }, StringSplitOptions.None).ToList();
+            var (lines, encoding, lineEnding) = ReadCsvFile(csvFile);
 
             var model = new FunctionFileModel
             {
@@ -256,11 +247,7 @@ public class FileLoadService
 
         foreach (var csvFile in csvFiles)
         {
-            using var reader = new StreamReader(csvFile, detectEncodingFromByteOrderMarks: true);
-            string rawText = reader.ReadToEnd();
-            var encoding = reader.CurrentEncoding;
-            string lineEnding = rawText.Contains("\r\n") ? "\r\n" : "\n";
-            var lines = rawText.Split(new[] { lineEnding }, StringSplitOptions.None).ToList();
+            var (lines, encoding, lineEnding) = ReadCsvFile(csvFile);
 
             var model = new AlarmFileModel
             {
@@ -308,5 +295,30 @@ public class FileLoadService
         }
 
         return true;
+    }
+
+    private static (List<string> lines, Encoding encoding, string lineEnding) ReadCsvFile(string filePath)
+    {
+        using var reader = new StreamReader(filePath, detectEncodingFromByteOrderMarks: true);
+        string rawText = reader.ReadToEnd();
+        Encoding encoding = reader.CurrentEncoding;
+        string lineEnding = DetectLineEnding(rawText);
+        var lines = rawText.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None).ToList();
+
+        return (lines, encoding, lineEnding);
+    }
+
+    private static string DetectLineEnding(string rawText)
+    {
+        for (int i = 0; i < rawText.Length; i++)
+        {
+            if (rawText[i] == '\r')
+                return i + 1 < rawText.Length && rawText[i + 1] == '\n' ? "\r\n" : "\r";
+
+            if (rawText[i] == '\n')
+                return "\n";
+        }
+
+        return "\r\n";
     }
 }

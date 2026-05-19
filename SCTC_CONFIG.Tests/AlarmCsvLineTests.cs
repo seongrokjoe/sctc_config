@@ -68,6 +68,47 @@ public sealed class AlarmCsvLineTests : IDisposable
     }
 
     [Fact]
+    public void Save_UpdatesOnlySelectedStopModeColumns_WhenDisplayOnlyIsApplied()
+    {
+        string alarmDir = Path.Combine(_tempRoot, "Alarm");
+        Directory.CreateDirectory(alarmDir);
+
+        const string header = "AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note,Enabled";
+        const string before = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,Description,EMGStop:1,SetupStop:1,DefaultStop:1,TRUE";
+        const string expected = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,Description,DisplayOnly:1,SetupStop:1,DefaultStop:1,TRUE";
+
+        string alarmPath = Path.Combine(alarmDir, "AlarmCase.csv");
+        File.WriteAllText(alarmPath, string.Join("\r\n", header, before), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        var csvTab = new CsvTabViewModel();
+        csvTab.AlarmPanel.ApplySetup = false;
+        csvTab.AlarmPanel.ApplyDefault = false;
+
+        var model = new AlarmFileModel
+        {
+            FilePath = alarmPath,
+            FileName = "AlarmCase.csv",
+            Lines = new List<string> { header, before },
+            FileEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            LineEnding = "\r\n",
+            HeaderColumnCount = 11,
+            DataLineIndices = new List<int> { 1 },
+            InitialIsDisplayOnly = false
+        };
+
+        csvTab.AlarmPanel.Items.Add(new AlarmFileItemViewModel(model)
+        {
+            IsDisplayOnly = true
+        });
+
+        var service = new FileSaveService();
+        service.Save(_tempRoot, null, csvTab);
+
+        string saved = File.ReadAllText(alarmPath);
+        Assert.Equal(string.Join("\r\n", header, expected), saved);
+    }
+
+    [Fact]
     public void Load_ComputesDisplayOnlyState_ForVariableColumnCountAlarmRows()
     {
         string alarmDir = Path.Combine(_tempRoot, "Alarm");
@@ -87,6 +128,50 @@ public sealed class AlarmCsvLineTests : IDisposable
         Assert.Single(result.AlarmFiles);
         Assert.True(result.AlarmFiles[0].InitialIsDisplayOnly);
         Assert.Equal(11, result.AlarmFiles[0].HeaderColumnCount);
+    }
+
+    [Fact]
+    public void Load_SplitsAlarmCsvRows_WithMixedLineEndings()
+    {
+        string alarmDir = Path.Combine(_tempRoot, "Alarm");
+        Directory.CreateDirectory(alarmDir);
+
+        File.WriteAllText(Path.Combine(_tempRoot, "General.csv"), "UseStandaloneMode,TRUE", Encoding.UTF8);
+        WriteRequiredScdCsv();
+
+        string header = string.Join(",", Enumerable.Range(1, 19).Select(i => $"Column{i}"));
+        string displayOnlyData = string.Join(",",
+            "A001",
+            "OverTemperature",
+            "CRITICAL",
+            "Hardware",
+            "Sensor",
+            "TempSensor",
+            "Description",
+            "DisplayOnly:1",
+            "DisplayOnly:1",
+            "DisplayOnly:1",
+            "TRUE",
+            "C12",
+            "C13",
+            "C14",
+            "C15",
+            "C16",
+            "C17",
+            "C18",
+            "C19");
+
+        string alarmText = header + "\n" + displayOnlyData + "\r\n" + displayOnlyData;
+        File.WriteAllText(Path.Combine(alarmDir, "AlarmCase.csv"), alarmText, Encoding.UTF8);
+
+        var service = new FileLoadService();
+        LoadResult result = service.Load(_tempRoot);
+
+        Assert.True(result.Success, result.ErrorMessage);
+        Assert.Single(result.AlarmFiles);
+        Assert.Equal(2, result.AlarmFiles[0].DataLineIndices.Count);
+        Assert.Equal(19, result.AlarmFiles[0].HeaderColumnCount);
+        Assert.True(result.AlarmFiles[0].InitialIsDisplayOnly);
     }
 
     [Fact]

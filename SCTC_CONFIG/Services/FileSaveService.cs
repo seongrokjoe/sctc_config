@@ -138,11 +138,15 @@ public class FileSaveService
 
     private static void SaveAlarmFiles(AlarmPanelViewModel panel)
     {
+        if (!panel.ApplyRun && !panel.ApplySetup && !panel.ApplyDefault)
+            return;
+
         foreach (var item in panel.Items)
         {
             if (!item.IsDisplayOnly) continue;
 
             var lines = new List<string>(item.Model.Lines);
+            bool anyChanged = false;
 
             foreach (int idx in item.Model.DataLineIndices)
             {
@@ -153,10 +157,21 @@ public class FileSaveService
                         $"Alarm CSV 저장 실패: {item.Model.FilePath} ({idx + 1}행){Environment.NewLine}{errorMessage}");
                 }
 
-                lines[idx] = parsedLine.ReplaceDisplayOnlyFields("DisplayOnly:1");
+                string replacedLine = parsedLine.ReplaceStopModeFields(
+                    "DisplayOnly:1",
+                    panel.ApplyRun,
+                    panel.ApplySetup,
+                    panel.ApplyDefault);
+
+                if (lines[idx] == replacedLine)
+                    continue;
+
+                lines[idx] = replacedLine;
+                anyChanged = true;
             }
 
-            File.WriteAllText(item.Model.FilePath, string.Join(item.Model.LineEnding, lines), item.Model.FileEncoding);
+            if (anyChanged)
+                File.WriteAllText(item.Model.FilePath, string.Join(item.Model.LineEnding, lines), item.Model.FileEncoding);
         }
     }
 

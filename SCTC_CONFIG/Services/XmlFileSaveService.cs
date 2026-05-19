@@ -106,20 +106,41 @@ public class XmlFileSaveService
 
     private static void SaveAlarmFiles(XmlAlarmPanelViewModel panel)
     {
+        if (!panel.ApplyRun && !panel.ApplySetup && !panel.ApplyDefault)
+            return;
+
         foreach (var item in panel.Items)
         {
             if (!item.IsDisplayOnly) continue;
 
             var doc = item.Model.Document;
-            foreach (var el in doc.Descendants("StopMode_Run").ToList())
-                el.Value = "DisplayOnly:1";
-            foreach (var el in doc.Descendants("StopMode_Setup").ToList())
-                el.Value = "DisplayOnly:1";
-            foreach (var el in doc.Descendants("StopMode_Default").ToList())
-                el.Value = "DisplayOnly:1";
+            bool anyChanged = false;
 
-            WriteXDocument(doc, item.Model.FilePath, item.Model.FileEncoding);
+            if (panel.ApplyRun)
+                anyChanged |= SetDescendantValues(doc, "StopMode_Run", "DisplayOnly:1");
+            if (panel.ApplySetup)
+                anyChanged |= SetDescendantValues(doc, "StopMode_Setup", "DisplayOnly:1");
+            if (panel.ApplyDefault)
+                anyChanged |= SetDescendantValues(doc, "StopMode_Default", "DisplayOnly:1");
+
+            if (anyChanged)
+                WriteXDocument(doc, item.Model.FilePath, item.Model.FileEncoding);
         }
+    }
+
+    private static bool SetDescendantValues(XDocument doc, string elementName, string value)
+    {
+        bool anyChanged = false;
+        foreach (var el in doc.Descendants(elementName).ToList())
+        {
+            if (el.Value == value)
+                continue;
+
+            el.Value = value;
+            anyChanged = true;
+        }
+
+        return anyChanged;
     }
 
     private static void WriteXDocument(XDocument doc, string filePath, Encoding encoding)

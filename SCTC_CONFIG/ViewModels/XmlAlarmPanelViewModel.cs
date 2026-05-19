@@ -20,7 +20,16 @@ public partial class XmlAlarmFileItemViewModel : ObservableObject
     }
 }
 
-public class XmlAlarmPanelViewModel : ObservableObject
+public partial class XmlAlarmPanelViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private bool _applyRun = true;
+
+    [ObservableProperty]
+    private bool _applySetup = true;
+
+    [ObservableProperty]
+    private bool _applyDefault = true;
+
     public ObservableCollection<XmlAlarmFileItemViewModel> Items { get; } = new();
 }

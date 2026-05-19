@@ -7,9 +7,12 @@ public readonly record struct AlarmCsvField(int Start, int Length);
 public sealed class AlarmCsvLine
 {
     public const int DescriptionColumnIndex = 6;
-    public const int DisplayOnlyActionColumnIndex = 7;
-    public const int DisplayOnlyRecoveryColumnIndex = 8;
-    public const int DisplayOnlyNoteColumnIndex = 9;
+    public const int StopModeRunColumnIndex = 7;
+    public const int StopModeSetupColumnIndex = 8;
+    public const int StopModeDefaultColumnIndex = 9;
+    public const int DisplayOnlyActionColumnIndex = StopModeRunColumnIndex;
+    public const int DisplayOnlyRecoveryColumnIndex = StopModeSetupColumnIndex;
+    public const int DisplayOnlyNoteColumnIndex = StopModeDefaultColumnIndex;
 
     private readonly string _line;
     private readonly AlarmCsvField[] _fields;
@@ -30,12 +33,24 @@ public sealed class AlarmCsvLine
 
     public string ReplaceDisplayOnlyFields(string value)
     {
+        return ReplaceStopModeFields(
+            value,
+            applyRun: true,
+            applySetup: true,
+            applyDefault: true);
+    }
+
+    public string ReplaceStopModeFields(string value, bool applyRun, bool applySetup, bool applyDefault)
+    {
         var replacements = new Dictionary<int, string>
-        {
-            [DisplayOnlyActionColumnIndex] = value,
-            [DisplayOnlyRecoveryColumnIndex] = value,
-            [DisplayOnlyNoteColumnIndex] = value
-        };
+        ();
+
+        if (applyRun)
+            replacements[StopModeRunColumnIndex] = value;
+        if (applySetup)
+            replacements[StopModeSetupColumnIndex] = value;
+        if (applyDefault)
+            replacements[StopModeDefaultColumnIndex] = value;
 
         var sb = new StringBuilder(_line.Length + (value.Length * 3));
         for (int i = 0; i < _fields.Length; i++)
@@ -61,14 +76,14 @@ public sealed class AlarmCsvLine
         parsedLine = null!;
         errorMessage = string.Empty;
 
-        if (headerColumnCount <= DisplayOnlyNoteColumnIndex)
+        if (headerColumnCount <= StopModeDefaultColumnIndex)
         {
             errorMessage = $"Alarm 헤더 컬럼 수가 부족합니다. HeaderColumnCount={headerColumnCount}";
             return false;
         }
 
         int prefixCommaCount = DescriptionColumnIndex;
-        int suffixCommaCount = headerColumnCount - DisplayOnlyActionColumnIndex;
+        int suffixCommaCount = headerColumnCount - StopModeRunColumnIndex;
 
         var leftCommas = new int[prefixCommaCount];
         var rightCommas = new int[suffixCommaCount];
@@ -106,7 +121,7 @@ public sealed class AlarmCsvLine
 
         for (int i = 0; i < rightCommas.Length; i++)
         {
-            int columnIndex = DisplayOnlyActionColumnIndex + i;
+            int columnIndex = StopModeRunColumnIndex + i;
             int start = rightCommas[i] + 1;
             int end = i + 1 < rightCommas.Length ? rightCommas[i + 1] : line.Length;
             fields[columnIndex] = new AlarmCsvField(start, end - start);

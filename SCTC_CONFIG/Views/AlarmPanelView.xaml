@@ -5,6 +5,17 @@
         <Border DockPanel.Dock="Top" Style="{StaticResource CsvPanelHeader}">
             <TextBlock Text="Alarm" Style="{StaticResource CsvPanelHeaderText}"/>
         </Border>
+        <Border DockPanel.Dock="Top" Background="{StaticResource SurfaceLightBrush}"
+                BorderBrush="#E2E8F0" BorderThickness="0,0,0,1" Padding="8,6">
+            <StackPanel Orientation="Horizontal">
+                <CheckBox Content="Run" IsChecked="{Binding ApplyRun}" Margin="0,0,12,0"
+                          VerticalAlignment="Center"/>
+                <CheckBox Content="Setup" IsChecked="{Binding ApplySetup}" Margin="0,0,12,0"
+                          VerticalAlignment="Center"/>
+                <CheckBox Content="Default" IsChecked="{Binding ApplyDefault}"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
             <ItemsControl ItemsSource="{Binding Items}" Margin="0">
                 <ItemsControl.ItemTemplate>

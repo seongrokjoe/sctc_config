@@ -89,6 +89,9 @@ public partial class MainViewModel : ObservableObject
             CsvTab.FunctionPanel.Items.Add(new FunctionFileItemViewModel(fm));
 
         CsvTab.AlarmPanel.Items.Clear();
+        CsvTab.AlarmPanel.ApplyRun = true;
+        CsvTab.AlarmPanel.ApplySetup = true;
+        CsvTab.AlarmPanel.ApplyDefault = true;
         foreach (var am in result.AlarmFiles)
             CsvTab.AlarmPanel.Items.Add(new AlarmFileItemViewModel(am));
 
@@ -136,6 +139,9 @@ public partial class MainViewModel : ObservableObject
 
         // Alarm panel
         XmlTab.AlarmPanel.Items.Clear();
+        XmlTab.AlarmPanel.ApplyRun = true;
+        XmlTab.AlarmPanel.ApplySetup = true;
+        XmlTab.AlarmPanel.ApplyDefault = true;
         foreach (var am in result.AlarmFiles)
             XmlTab.AlarmPanel.Items.Add(new XmlAlarmFileItemViewModel(am));
 
