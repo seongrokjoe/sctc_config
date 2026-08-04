@@ -195,6 +195,86 @@ public sealed class AlarmCsvLineTests : IDisposable
         Assert.Contains("AlarmCase.csv", result.ErrorMessage);
     }
 
+    [Fact]
+    public void Export_WritesOnlyRunDefaultDifferences_FromAllAlarmFiles()
+    {
+        string alarmDir = Path.Combine(_tempRoot, "Alarm");
+        Directory.CreateDirectory(alarmDir);
+
+        const string header = "AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note";
+        const string sameRow = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,Description,DisplayOnly:1,SetupStop:1,DisplayOnly:1";
+        const string differentRow = "A002,LowPressure,WARNING,Process,Valve,PressureValve,Description,RunStop:1,SetupStop:1,DefaultStop:1";
+        const string uncheckedDifferentRow = "B001,VisionTimeout,WARNING,Vision,VisionDrv,Camera1,Description,RunStop:2,SetupStop:1,DefaultStop:2";
+
+        var panel = new AlarmPanelViewModel();
+        panel.ApplyRun = false;
+        panel.ApplyDefault = false;
+        panel.Items.Add(new AlarmFileItemViewModel(new AlarmFileModel
+        {
+            FilePath = Path.Combine(alarmDir, "AlarmA.csv"),
+            FileName = "AlarmA.csv",
+            Lines = new List<string> { header, sameRow, differentRow },
+            HeaderColumnCount = 10,
+            DataLineIndices = new List<int> { 1, 2 },
+            InitialIsDisplayOnly = true
+        })
+        {
+            IsDisplayOnly = true
+        });
+        panel.Items.Add(new AlarmFileItemViewModel(new AlarmFileModel
+        {
+            FilePath = Path.Combine(alarmDir, "AlarmB.csv"),
+            FileName = "AlarmB.csv",
+            Lines = new List<string> { header, uncheckedDifferentRow },
+            HeaderColumnCount = 10,
+            DataLineIndices = new List<int> { 1 },
+            InitialIsDisplayOnly = false
+        })
+        {
+            IsDisplayOnly = false
+        });
+
+        var service = new AlarmStopModeDiffExportService();
+        var result = service.Export(panel, new DateTime(2026, 8, 4, 12, 34, 56));
+
+        string report = File.ReadAllText(result.FilePath, Encoding.UTF8);
+        Assert.Equal(2, result.DifferenceCount);
+        Assert.Equal(Path.Combine(alarmDir, "20260804_123456.txt"), result.FilePath);
+        Assert.Contains("DifferenceCount: 2", report);
+        Assert.Contains("File=AlarmA.csv, AlarmID=A002, Line=3, StopMode_Run=RunStop:1, StopMode_Default=DefaultStop:1", report);
+        Assert.Contains("File=AlarmB.csv, AlarmID=B001, Line=2, StopMode_Run=RunStop:2, StopMode_Default=DefaultStop:2", report);
+        Assert.DoesNotContain("A001", report);
+    }
+
+    [Fact]
+    public void Export_WritesNoDifferencesMessage_WhenRunAndDefaultAreSame()
+    {
+        string alarmDir = Path.Combine(_tempRoot, "Alarm");
+        Directory.CreateDirectory(alarmDir);
+
+        const string header = "AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note";
+        const string sameRow = "A001,OverTemperature,CRITICAL,Hardware,Sensor,TempSensor,Description,DisplayOnly:1,SetupStop:1,DisplayOnly:1";
+
+        var panel = new AlarmPanelViewModel();
+        panel.Items.Add(new AlarmFileItemViewModel(new AlarmFileModel
+        {
+            FilePath = Path.Combine(alarmDir, "AlarmA.csv"),
+            FileName = "AlarmA.csv",
+            Lines = new List<string> { header, sameRow },
+            HeaderColumnCount = 10,
+            DataLineIndices = new List<int> { 1 },
+            InitialIsDisplayOnly = true
+        }));
+
+        var service = new AlarmStopModeDiffExportService();
+        var result = service.Export(panel, new DateTime(2026, 8, 4, 12, 34, 56));
+
+        string report = File.ReadAllText(result.FilePath, Encoding.UTF8);
+        Assert.Equal(0, result.DifferenceCount);
+        Assert.Contains("DifferenceCount: 0", report);
+        Assert.Contains("차이 없음", report);
+    }
+
     private void WriteRequiredScdCsv()
     {
         string scdDir = Path.Combine(_tempRoot, "SCD");

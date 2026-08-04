@@ -14,6 +14,9 @@
                           VerticalAlignment="Center"/>
                 <CheckBox Content="Default" IsChecked="{Binding ApplyDefault}"
                           VerticalAlignment="Center"/>
+                <Button Content="Export" Command="{Binding ExportRunDefaultDiffCommand}"
+                        Style="{StaticResource ToolbarButton}" Margin="12,0,0,0"
+                        VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
