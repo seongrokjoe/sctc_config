@@ -9,6 +9,9 @@ public sealed record AlarmStopModeDiffExportResult(string FilePath, int Differen
 
 public sealed class AlarmStopModeDiffExportService
 {
+    private const int AlarmIdColumnIndex = 0;
+    private const int KNameColumnIndex = 1;
+
     public AlarmStopModeDiffExportResult Export(AlarmPanelViewModel panel, DateTime exportedAt)
     {
         if (panel.Items.Count == 0)
@@ -20,9 +23,7 @@ public sealed class AlarmStopModeDiffExportService
 
         var reportLines = new List<string>
         {
-            $"ExportedAt: {exportedAt:yyyy-MM-dd HH:mm:ss}",
-            "Compare: StopMode_Run != StopMode_Default",
-            string.Empty
+            ToCsvLine("File", "AlarmID", "Line", "StopMode_Run", "StopMode_Default", "KName")
         };
 
         int differenceCount = 0;
@@ -47,16 +48,12 @@ public sealed class AlarmStopModeDiffExportService
                     continue;
 
                 differenceCount++;
-                string alarmId = parsedLine.GetField(0).Trim();
+                string alarmId = parsedLine.GetField(AlarmIdColumnIndex).Trim();
+                string kName = parsedLine.GetField(KNameColumnIndex).Trim();
                 reportLines.Add(
-                    $"{differenceCount}. File={model.FileName}, AlarmID={alarmId}, Line={lineIndex + 1}, StopMode_Run={runValue}, StopMode_Default={defaultValue}");
+                    ToCsvLine(model.FileName, alarmId, (lineIndex + 1).ToString(), runValue, defaultValue, kName));
             }
         }
-
-        if (differenceCount == 0)
-            reportLines.Add("차이 없음");
-
-        reportLines.Insert(2, $"DifferenceCount: {differenceCount}");
 
         Directory.CreateDirectory(alarmDir);
         string exportPath = GetUniqueExportPath(alarmDir, exportedAt);
@@ -68,15 +65,28 @@ public sealed class AlarmStopModeDiffExportService
     private static string GetUniqueExportPath(string alarmDir, DateTime exportedAt)
     {
         string baseName = exportedAt.ToString("yyyyMMdd_HHmmss");
-        string path = Path.Combine(alarmDir, $"{baseName}.txt");
+        string path = Path.Combine(alarmDir, $"{baseName}.csv");
         if (!File.Exists(path))
             return path;
 
         for (int suffix = 1; ; suffix++)
         {
-            path = Path.Combine(alarmDir, $"{baseName}_{suffix}.txt");
+            path = Path.Combine(alarmDir, $"{baseName}_{suffix}.csv");
             if (!File.Exists(path))
                 return path;
         }
+    }
+
+    private static string ToCsvLine(params string[] values)
+    {
+        return string.Join(",", values.Select(EscapeCsvValue));
+    }
+
+    private static string EscapeCsvValue(string value)
+    {
+        if (!value.Contains(',') && !value.Contains('"') && !value.Contains('\r') && !value.Contains('\n'))
+            return value;
+
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 }

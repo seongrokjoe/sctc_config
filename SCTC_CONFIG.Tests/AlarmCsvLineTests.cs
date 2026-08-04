@@ -239,10 +239,13 @@ public sealed class AlarmCsvLineTests : IDisposable
 
         string report = File.ReadAllText(result.FilePath, Encoding.UTF8);
         Assert.Equal(2, result.DifferenceCount);
-        Assert.Equal(Path.Combine(alarmDir, "20260804_123456.txt"), result.FilePath);
-        Assert.Contains("DifferenceCount: 2", report);
-        Assert.Contains("File=AlarmA.csv, AlarmID=A002, Line=3, StopMode_Run=RunStop:1, StopMode_Default=DefaultStop:1", report);
-        Assert.Contains("File=AlarmB.csv, AlarmID=B001, Line=2, StopMode_Run=RunStop:2, StopMode_Default=DefaultStop:2", report);
+        Assert.Equal(Path.Combine(alarmDir, "20260804_123456.csv"), result.FilePath);
+        Assert.Equal(
+            string.Join(Environment.NewLine,
+                "File,AlarmID,Line,StopMode_Run,StopMode_Default,KName",
+                "AlarmA.csv,A002,3,RunStop:1,DefaultStop:1,LowPressure",
+                "AlarmB.csv,B001,2,RunStop:2,DefaultStop:2,VisionTimeout"),
+            report);
         Assert.DoesNotContain("A001", report);
     }
 
@@ -271,8 +274,7 @@ public sealed class AlarmCsvLineTests : IDisposable
 
         string report = File.ReadAllText(result.FilePath, Encoding.UTF8);
         Assert.Equal(0, result.DifferenceCount);
-        Assert.Contains("DifferenceCount: 0", report);
-        Assert.Contains("차이 없음", report);
+        Assert.Equal("File,AlarmID,Line,StopMode_Run,StopMode_Default,KName", report);
     }
 
     private void WriteRequiredScdCsv()
