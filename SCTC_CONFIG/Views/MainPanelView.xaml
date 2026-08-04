@@ -17,9 +17,25 @@
                 </Grid>
             </Border>
         </DataTemplate>
+        <DataTemplate x:Key="CtcUiToggleItemTemplate">
+            <Border Style="{StaticResource ItemRow}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding Key}"
+                               Style="{StaticResource KeyLabel}"/>
+                    <ToggleButton Grid.Column="1"
+                                  Style="{StaticResource ValueToggleLower}"
+                                  IsChecked="{Binding IsEnabled}"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -42,6 +58,17 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
                 <ItemsControl ItemsSource="{Binding ScdItems}"
                               ItemTemplate="{StaticResource CsvToggleItemTemplate}"
+                              Margin="0"/>
+            </ScrollViewer>
+        </DockPanel>
+
+        <DockPanel Grid.Row="2">
+            <Border DockPanel.Dock="Top" Style="{StaticResource CsvPanelHeader}">
+                <TextBlock Text="UI" Style="{StaticResource CsvPanelHeaderText}"/>
+            </Border>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
+                <ItemsControl ItemsSource="{Binding UiItems}"
+                              ItemTemplate="{StaticResource CtcUiToggleItemTemplate}"
                               Margin="0"/>
             </ScrollViewer>
         </DockPanel>

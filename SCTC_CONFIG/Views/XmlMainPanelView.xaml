@@ -22,6 +22,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <DockPanel Grid.Row="0">
@@ -41,6 +42,17 @@
             </Border>
             <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
                 <ItemsControl ItemsSource="{Binding ScdItems}"
+                              ItemTemplate="{StaticResource XmlToggleItemTemplate}"
+                              Margin="0"/>
+            </ScrollViewer>
+        </DockPanel>
+
+        <DockPanel Grid.Row="2">
+            <Border DockPanel.Dock="Top" Style="{StaticResource XmlPanelHeader}">
+                <TextBlock Text="UI" Style="{StaticResource XmlPanelHeaderText}"/>
+            </Border>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Background="White">
+                <ItemsControl ItemsSource="{Binding UiItems}"
                               ItemTemplate="{StaticResource XmlToggleItemTemplate}"
                               Margin="0"/>
             </ScrollViewer>

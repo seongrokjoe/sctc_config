@@ -24,6 +24,7 @@ public class XmlMainPanelViewModel : ObservableObject
 {
     public ObservableCollection<XmlMainEntryItemViewModel> Items { get; } = new();
     public ObservableCollection<XmlMainEntryItemViewModel> ScdItems { get; } = new();
+    public ObservableCollection<CtcUiEntryItemViewModel> UiItems { get; } = new();
     public XDocument? Document { get; set; }
     public string FilePath { get; set; } = string.Empty;
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
@@ -31,4 +32,8 @@ public class XmlMainPanelViewModel : ObservableObject
     public XDocument? ScdDocument { get; set; }
     public string ScdFilePath { get; set; } = string.Empty;
     public Encoding ScdFileEncoding { get; set; } = Encoding.UTF8;
+
+    public string CtcUiFilePath { get; set; } = string.Empty;
+    public string CtcUiRawText { get; set; } = string.Empty;
+    public Encoding CtcUiFileEncoding { get; set; } = Encoding.UTF8;
 }

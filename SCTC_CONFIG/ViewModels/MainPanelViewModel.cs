@@ -25,6 +25,7 @@ public class MainPanelViewModel : ObservableObject
 {
     public ObservableCollection<MainEntryItemViewModel> Items { get; } = new();
     public ObservableCollection<MainEntryItemViewModel> ScdItems { get; } = new();
+    public ObservableCollection<CtcUiEntryItemViewModel> UiItems { get; } = new();
 
     public List<string> Lines { get; set; } = new();
     public Encoding FileEncoding { get; set; } = Encoding.UTF8;
@@ -33,4 +34,8 @@ public class MainPanelViewModel : ObservableObject
     public List<string> ScdLines { get; set; } = new();
     public Encoding ScdFileEncoding { get; set; } = Encoding.UTF8;
     public string ScdLineEnding { get; set; } = "\r\n";
+
+    public string CtcUiFilePath { get; set; } = string.Empty;
+    public string CtcUiRawText { get; set; } = string.Empty;
+    public Encoding CtcUiFileEncoding { get; set; } = Encoding.UTF8;
 }

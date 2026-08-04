@@ -11,6 +11,7 @@ public class XmlFileSaveService
     {
         SaveMainXml(xmlTab.MainPanel);
         SaveScdXml(xmlTab.MainPanel);
+        SaveCtcUiXml(xmlTab.MainPanel);
         SaveDriverXml(xmlTab.DriverPanel);
         SaveFunctionFiles(xmlTab.FunctionPanel);
         SaveAlarmFiles(xmlTab.AlarmPanel);
@@ -55,6 +56,22 @@ public class XmlFileSaveService
 
         if (anyChanged)
             WriteXDocument(panel.ScdDocument, panel.ScdFilePath, panel.ScdFileEncoding);
+    }
+
+    private static void SaveCtcUiXml(XmlMainPanelViewModel panel)
+    {
+        if (string.IsNullOrEmpty(panel.CtcUiFilePath) || panel.UiItems.Count == 0)
+            return;
+
+        var item = panel.UiItems.FirstOrDefault(item => item.Key == CtcUiXmlService.TargetElementName);
+        if (item == null)
+            return;
+
+        if (!CtcUiXmlService.TryReplaceValue(panel.CtcUiRawText, item.IsEnabled, out string updatedText))
+            return;
+
+        File.WriteAllText(panel.CtcUiFilePath, updatedText, panel.CtcUiFileEncoding);
+        panel.CtcUiRawText = updatedText;
     }
 
     private static void SaveDriverXml(XmlDriverPanelViewModel panel)

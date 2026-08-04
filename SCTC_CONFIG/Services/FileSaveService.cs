@@ -22,6 +22,9 @@ public class FileSaveService
         // 2-1. Save SCD/SCDGeneral.csv
         SaveScdCsv(rootPath, csvTab.MainPanel);
 
+        // 2-2. Save CTC_UI.xml
+        SaveCtcUiXml(csvTab.MainPanel);
+
         // 3. Save Driver/Driver.csv
         SaveDriverCsv(rootPath, csvTab.DriverPanel);
 
@@ -83,6 +86,22 @@ public class FileSaveService
 
         string filePath = Path.Combine(rootPath, "SCD", "SCDGeneral.csv");
         File.WriteAllText(filePath, string.Join(panel.ScdLineEnding, lines), panel.ScdFileEncoding);
+    }
+
+    private static void SaveCtcUiXml(MainPanelViewModel panel)
+    {
+        if (string.IsNullOrEmpty(panel.CtcUiFilePath) || panel.UiItems.Count == 0)
+            return;
+
+        var item = panel.UiItems.FirstOrDefault(item => item.Key == CtcUiXmlService.TargetElementName);
+        if (item == null)
+            return;
+
+        if (!CtcUiXmlService.TryReplaceValue(panel.CtcUiRawText, item.IsEnabled, out string updatedText))
+            return;
+
+        File.WriteAllText(panel.CtcUiFilePath, updatedText, panel.CtcUiFileEncoding);
+        panel.CtcUiRawText = updatedText;
     }
 
     private static void SaveDriverCsv(string rootPath, DriverPanelViewModel panel)

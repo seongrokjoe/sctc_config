@@ -66,12 +66,14 @@ public partial class MainViewModel : ObservableObject
 
         CsvTab.MainPanel.Items.Clear();
         CsvTab.MainPanel.ScdItems.Clear();
+        CsvTab.MainPanel.UiItems.Clear();
         CsvTab.MainPanel.Lines = result.MainLines;
         CsvTab.MainPanel.FileEncoding = result.MainEncoding;
         CsvTab.MainPanel.LineEnding = result.MainLineEnding;
         CsvTab.MainPanel.ScdLines = result.ScdLines;
         CsvTab.MainPanel.ScdFileEncoding = result.ScdEncoding;
         CsvTab.MainPanel.ScdLineEnding = result.ScdLineEnding;
+        ApplyCtcUiState(CsvTab.MainPanel, result.CtcUi);
         foreach (var entry in result.MainEntries)
             CsvTab.MainPanel.Items.Add(new MainEntryItemViewModel(entry));
         foreach (var entry in result.ScdEntries)
@@ -113,12 +115,14 @@ public partial class MainViewModel : ObservableObject
         // Main panel
         XmlTab.MainPanel.Items.Clear();
         XmlTab.MainPanel.ScdItems.Clear();
+        XmlTab.MainPanel.UiItems.Clear();
         XmlTab.MainPanel.Document = result.MainDocument;
         XmlTab.MainPanel.FilePath = result.MainFilePath;
         XmlTab.MainPanel.FileEncoding = result.MainEncoding;
         XmlTab.MainPanel.ScdDocument = result.ScdDocument;
         XmlTab.MainPanel.ScdFilePath = result.ScdFilePath;
         XmlTab.MainPanel.ScdFileEncoding = result.ScdEncoding;
+        ApplyCtcUiState(XmlTab.MainPanel, result.CtcUi);
         foreach (var entry in result.MainEntries)
             XmlTab.MainPanel.Items.Add(new XmlMainEntryItemViewModel(entry));
         foreach (var entry in result.ScdEntries)
@@ -189,6 +193,26 @@ public partial class MainViewModel : ObservableObject
     }
 
     private bool CanSave() => SelectedTabIndex == 0 ? IsCsvLoaded : IsXmlLoaded;
+
+    private static void ApplyCtcUiState(MainPanelViewModel panel, CtcUiFileState state)
+    {
+        panel.CtcUiFilePath = state.FilePath;
+        panel.CtcUiRawText = state.RawText;
+        panel.CtcUiFileEncoding = state.FileEncoding;
+
+        foreach (var entry in state.Entries)
+            panel.UiItems.Add(new CtcUiEntryItemViewModel(entry));
+    }
+
+    private static void ApplyCtcUiState(XmlMainPanelViewModel panel, CtcUiFileState state)
+    {
+        panel.CtcUiFilePath = state.FilePath;
+        panel.CtcUiRawText = state.RawText;
+        panel.CtcUiFileEncoding = state.FileEncoding;
+
+        foreach (var entry in state.Entries)
+            panel.UiItems.Add(new CtcUiEntryItemViewModel(entry));
+    }
 
     private static void CopyDirectory(string sourceDir, string destDir)
     {

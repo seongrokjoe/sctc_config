@@ -27,6 +27,8 @@ public class LoadResult
 
     public List<FunctionFileModel> FunctionFiles { get; set; } = new();
     public List<AlarmFileModel> AlarmFiles { get; set; } = new();
+
+    public CtcUiFileState CtcUi { get; set; } = new();
 }
 
 public class FileLoadService
@@ -70,6 +72,8 @@ public class FileLoadService
         }
 
         LoadScdCsv(scdPath, result);
+
+        result.CtcUi = CtcUiXmlService.Load(rootPath);
 
         // Driver/Driver.csv is optional
         string driverPath = Path.Combine(rootPath, "Driver", "Driver.csv");

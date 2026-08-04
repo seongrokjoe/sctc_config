@@ -33,6 +33,8 @@ public class XmlLoadResult
 
     // Alarm
     public List<XmlAlarmFileModel> AlarmFiles { get; set; } = new();
+
+    public CtcUiFileState CtcUi { get; set; } = new();
 }
 
 public class XmlFileLoadService
@@ -64,6 +66,7 @@ public class XmlFileLoadService
         {
             LoadMainXml(sctcPath, result);
             LoadScdXml(scdPath, result);
+            result.CtcUi = CtcUiXmlService.Load(rootPath);
 
             string driverPath = Path.Combine(rootPath, "Driver", "Driver.xml");
             if (File.Exists(driverPath))
