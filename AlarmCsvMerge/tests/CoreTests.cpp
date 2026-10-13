@@ -12,7 +12,7 @@ using namespace alarm;
 
 namespace
 {
-    const std::wstring Header = L"AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note";
+    const std::wstring Header = L"Number,Label,Level,Group,Unit,Part,Message,RunFlag,SetupFlag,DefaultFlag";
     const std::wstring NamedHeader = L"ID,AlarmName,Severity,Category,Module,SubModule,Description,StopMode_Run,StopMode_Setup,StopMode_Default";
 
     Bytes B(const std::wstring& text, Encoding encoding = Encoding::Utf8, bool bom = false)
@@ -20,11 +20,20 @@ namespace
         return EncodeText(text, encoding, bom);
     }
 
+    std::wstring CsvValue(const std::wstring& value)
+    {
+        if (value.find_first_of(L",\"\r\n") == std::wstring::npos) return value;
+        std::wstring escaped = L"\"";
+        for (wchar_t c : value) escaped += c == L'"' ? L"\"\"" : std::wstring(1, c);
+        return escaped + L"\"";
+    }
+
     std::wstring R(const std::wstring& id, const std::wstring& run = L"DisplayOnly:1",
         const std::wstring& setup = L"SetupStop:2", const std::wstring& def = L"DefaultStop:3",
         const std::wstring& description = L"description", const std::wstring& name = L"name")
     {
-        return id + L"," + name + L",WARN,Cat,Module,Sub," + description + L"," + run + L"," + setup + L"," + def;
+        return CsvValue(id) + L"," + CsvValue(name) + L",WARN,Cat,Module,Sub," + CsvValue(description) +
+            L"," + CsvValue(run) + L"," + CsvValue(setup) + L"," + CsvValue(def);
     }
 
     void Check(bool condition, const char* message)
@@ -54,7 +63,7 @@ namespace
         Check(oldBytes == beforeOld && newBytes == beforeNew, "Original buffers immutable");
     }
 
-    void DescriptionAndLineEndings()
+    void QuotedFieldsAndLineEndings()
     {
         auto description = L"abc 'abc \"\"abc\"\", abc \"\"abc\"\" abc";
         auto oldBytes = B(Header + L"\r\n" + R(L"A", L"OLD"));
@@ -75,7 +84,7 @@ namespace
         auto result = CompareCsv(&oldBytes, &newBytes);
         Check(result.commonIds == 1 && result.oldOnlyIds == 2 && result.newOnlyIds == 1, "IDs preserve zeroes and case");
         Check(result.stopCells == 0 && result.differentIds == 0 && result.changes.size() == 3, "Whitespace ignored in diff");
-        for (const auto& change : result.changes) Check(change.whitespaceOnly, "Whitespace changes classified");
+        for (const auto& change : result.changes) Check(change.formatOnly, "Whitespace changes classified");
         auto expected = B(Header + L"\n" + R(L"A001", L" EMG:1 ", L"\tSetup:2\t", L"") + L"\n" + R(L"1"));
         Check(result.output == expected, "All three raw OLD StopMode fields transferred");
     }
@@ -85,17 +94,18 @@ namespace
         auto oldBytes = B(Header + L",First,Second\n" + R(L"A") + L",one,two");
         auto newBytes = B(NamedHeader + L",Second,First\n" + R(L"A") + L",two,one");
         auto result = CompareCsv(&oldBytes, &newBytes);
-        Check(!result.skipped && result.stopCells == 0 && result.otherCells == 0, "Aliases and extra column reordering");
-        Check(result.output == newBytes && Has(result.diff, L"HEADER CHANGED"), "NEW header unchanged");
+        Check(!result.skipped && result.stopCells == 0 && result.otherCells == 2, "Renamed/reordered headers still compare field positions");
+        Check(result.output == newBytes && !Has(result.diff, L"HEADER CHANGED"), "Header labels are not compared");
     }
 
     void MissingVersusEmptyColumn()
     {
-        auto oldBytes = B(Header + L",Removed\n" + R(L"A") + L",");
-        auto newBytes = B(Header + L",Added\n" + R(L"A") + L",");
+        auto oldBytes = B(Header + L",Extra,\n" + R(L"A") + L",,");
+        auto newBytes = B(Header + L",Renamed\n" + R(L"A") + L",");
         auto result = CompareCsv(&oldBytes, &newBytes);
-        Check(result.otherCells == 2 && Has(result.diff, L"<MISSING COLUMN>"), "Missing column is not empty");
-        Check(Has(result.diff, L"NEW ONLY COLUMN") && Has(result.diff, L"OLD ONLY COLUMN"), "Schema changes reported");
+        Check(!result.skipped && result.otherCells == 1 && Has(result.diff, L"<MISSING COLUMN>"),
+            "Missing position differs from empty while renamed equal fields do not differ");
+        Check(Has(result.diff, L"Column=12") && Has(result.diff, L"Column 12"), "Unnamed column uses position label");
     }
 
     void DuplicatesExcludeWholeFile()
@@ -114,12 +124,13 @@ namespace
         std::vector<std::wstring> invalid = {
             L"",
             L"# comment\n",
+            L"A,B,C\n",
             Header + L"\nA,few,columns",
             Header + L"\n" + R(L" "),
-            L"AlarmID,Name,Severity,Category,Module,Description,SubModule,Action,Recovery,Note\n" + R(L"A"),
-            L"AlarmID,Name,Severity,Category,Module,SubModule,Description,Recovery,Action,Note\n" + R(L"A"),
-            Header + L",Extra,Extra\n" + R(L"A") + L",x,y",
-            Header + L",\n" + R(L"A") + L",",
+            Header + L"\n" + R(L"A") + L",extra",
+            Header + L"\nA,name,WARN,Cat,Module,Sub,\"unterminated,RUN,SETUP,DEF",
+            Header + L"\nA,name,WARN,Cat,Module,Sub,\"closed\"garbage,RUN,SETUP,DEF",
+            Header + L"\nA,name,WARN,Cat,Module,Sub,bad\"quote,RUN,SETUP,DEF",
             Header + L"\nA,name,WARN,Cat,Module,Sub,\"multi\nline\",RUN,SETUP,DEF"
         };
         auto good = B(Header + L"\n" + R(L"A"));
@@ -131,6 +142,41 @@ namespace
             result = CompareCsv(&bytes, nullptr);
             Check(result.skipped && result.output.empty() && Has(result.diff, L"OLD-only file is not generated"), "Invalid OLD-only files are never copied");
         }
+    }
+
+    void HeaderLabelsAreNotSchema()
+    {
+        const std::vector<std::wstring> headers = {
+            NamedHeader,
+            L"Anything,Same,Same,,,Other,Message,X,Y,Z",
+            std::wstring(9, L','),
+            L"\"Name, label\",B,C,D,E,F,G,H,I,J"
+        };
+        const auto row = R(L"A", L"OLD");
+        auto oldBytes = B(Header + L"\n" + row);
+        for (const auto& header : headers)
+        {
+            auto newBytes = B(L"# comment\n" + header + L"\r\n" + row);
+            auto result = CompareCsv(&oldBytes, &newBytes);
+            Check(!result.skipped && result.oldIds == 1 && result.newIds == 1 && result.commonIds == 1,
+                "Header is excluded from ID matching regardless of labels");
+            Check(result.differentIds == 0 && result.output == newBytes && !Has(result.diff, L"HEADER"),
+                "Header-only renames do not produce differences");
+        }
+    }
+
+    void QuotedValuesAndRawStopModes()
+    {
+        auto oldBytes = B(Header + L"\n\"1001\",\"Name, \"\"old\"\"\",WARN,Cat,Module,Sub,\"memo, text\",\"EMG:5|6\",\"\",\"D:3\"");
+        auto newBytes = B(NamedHeader + L"\n1001,\"Name, \"\"new\"\"\",WARN,Cat,Module,Sub,\"memo, new\",EMG:5|6,,D:3");
+        auto expected = B(NamedHeader + L"\n1001,\"Name, \"\"new\"\"\",WARN,Cat,Module,Sub,\"memo, new\",\"EMG:5|6\",\"\",\"D:3\"");
+        auto result = CompareCsv(&oldBytes, &newBytes);
+        Check(!result.skipped && result.commonIds == 1 && result.stopCells == 0 && result.otherCells == 2,
+            "Quoted IDs/values decode correctly and compare by position");
+        Check(result.output == expected && result.changes.size() == 3, "Raw StopMode quoting copied, other raw spans preserved");
+        for (const auto& change : result.changes) Check(change.formatOnly, "Quote-only changes are formatting");
+        auto duplicate = B(Header + L"\n" + R(L"1001") + L"\n\"1001\",name,WARN,Cat,Module,Sub,message,RUN,SETUP,DEFAULT");
+        Check(CompareCsv(&duplicate, &newBytes).skipped, "Quoted and unquoted equivalent IDs are duplicates");
     }
 
     void Encodings()
@@ -235,6 +281,8 @@ namespace
             WriteNewBytes(JoinPath(newDir, L"BM.csv"), newBytes);
             auto comparison = CompareFolders(CanonicalDirectory(oldDir), CanonicalDirectory(newDir));
             Check(comparison.canGenerate, "Fixture inventory valid");
+            Check(!Has(comparison.report, L"Rules:") && !Has(comparison.report, L"[COMMON FILE]") &&
+                Has(comparison.report, L"한쪽에만 있는 파일 없음"), "Compact report with no file-only differences");
             bool failed = false;
             try { Generate(comparison, outDir, JoinPath(outDir, L"missing-report.txt")); }
             catch (const IoError&) { failed = true; }
@@ -296,9 +344,11 @@ int main()
 {
     const std::vector<std::pair<const char*, std::function<void()>>> tests = {
         {"UnsortedMerge", UnsortedMerge},
-        {"DescriptionAndLineEndings", DescriptionAndLineEndings},
+        {"QuotedFieldsAndLineEndings", QuotedFieldsAndLineEndings},
         {"WhitespaceAndIdIdentity", WhitespaceAndIdIdentity},
         {"HeaderMapping", HeaderMapping},
+        {"HeaderLabelsAreNotSchema", HeaderLabelsAreNotSchema},
+        {"QuotedValuesAndRawStopModes", QuotedValuesAndRawStopModes},
         {"MissingVersusEmptyColumn", MissingVersusEmptyColumn},
         {"DuplicatesExcludeWholeFile", DuplicatesExcludeWholeFile},
         {"InvalidStructures", InvalidStructures},

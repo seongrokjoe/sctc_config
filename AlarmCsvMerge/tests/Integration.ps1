@@ -7,14 +7,17 @@ $fixture = Join-Path $fixtureParent ('integration_' + [Guid]::NewGuid().ToString
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $lf = [string][char]10
 $crlf = [string][char]13 + $lf
-$header = 'AlarmID,AlarmName,Severity,Category,Module,SubModule,Description,Action,Recovery,Note'
+$header = 'Number,Label,Level,Group,Unit,Part,Message,RunFlag,SetupFlag,DefaultFlag'
 $passed = 0
 
 function Assert-True([bool]$Value, [string]$Message) {
     if (!$Value) { throw $Message }
 }
 function Row([string]$Id, [string]$Run = 'DisplayOnly:1', [string]$Setup = 'Setup:2', [string]$Default = 'Default:3', [string]$Description = 'Description') {
-    return "$Id,Name,WARN,Category,Module,Sub,$Description,$Run,$Setup,$Default"
+    $values = @($Id, 'Name', 'WARN', 'Category', 'Module', 'Sub', $Description, $Run, $Setup, $Default)
+    return (($values | ForEach-Object {
+        if ($_.Contains(',') -or $_.Contains('"')) { '"' + $_.Replace('"', '""') + '"' } else { $_ }
+    }) -join ',')
 }
 function Put-Text([string]$Path, [string]$Text) {
     [IO.File]::WriteAllText($Path, $Text, $utf8)
@@ -95,9 +98,14 @@ try {
     $reports = @(Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt')
     Assert-True ($reports.Count -eq 1) 'N must write exactly one report.'
     $report = [IO.File]::ReadAllText($reports[0].FullName)
-    foreach ($token in @('OLD ONLY FILE', 'NEW ONLY FILE', 'OLD ONLY ID', 'NEW ONLY ID', 'StopMode_Run', 'EMGStop:5|6', 'OTHER COLUMN', 'Duplicate ID', 'AUTOCHANGE NOT REQUESTED')) {
+    foreach ($token in @('Path1 ONLY', 'Path2 ONLY', 'OLD ONLY ID', 'NEW ONLY ID', 'StopMode_Run', 'EMGStop:5|6', 'OTHER COLUMN', 'Duplicate ID', 'AUTOCHANGE NOT REQUESTED')) {
         Assert-True ($report.Contains($token)) "Missing report token: $token"
     }
+    $inventory = ($report -split "=== FILE INVENTORY ===", 2)[1] -split "=== CSV DETAILS ===", 2
+    Assert-True (!$report.Contains("Rules:") -and !$report.Contains("CSV layout:")) "Rules block must be absent."
+    Assert-True (!$report.Contains("unsupported core columns")) "Arbitrary header names must be accepted."
+    Assert-True (!$inventory[0].Contains("BM.csv") -and !$inventory[0].Contains("COMMON FILE")) "Inventory must omit common files."
+    Assert-True ($inventory[0].Contains("[Path1 ONLY] OldOnly.csv") -and $inventory[0].Contains("[Path2 ONLY] NewOnly.csv")) "Inventory must identify the side."
     $reportBytes = [IO.File]::ReadAllBytes($reports[0].FullName)
     Assert-True ($reportBytes[0] -eq 239 -and $reportBytes[1] -eq 187 -and $reportBytes[2] -eq 191) 'Report must have UTF-8 BOM.'
     Passed 'N: report, exact ID differences, no output folder'

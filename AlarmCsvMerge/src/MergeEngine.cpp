@@ -14,15 +14,8 @@ namespace alarm
         std::wostringstream report;
         report << L"ALARM CSV DIFF\r\n"
             << L"Compared at: " << Timestamp() << L"\r\n"
-            << L"OLD/Equipment: " << oldPath << L"\r\n"
-            << L"NEW/PatchSet:  " << newPath << L"\r\n\r\n"
-            << L"Rules: relative paths ignore case; IDs are trimmed, case-sensitive strings.\r\n"
-            << L"Values ignore leading/trailing whitespace; character case and pipe order remain significant.\r\n"
-            << L"CSV layout: ID=1, Description=7, StopMode_Run/Setup/Default=8/9/10.\r\n"
-            << L"File/ID order is not used for matching. Non-CSV contents are not compared.\r\n"
-            << L"AutoChange uses the NEW tree; all three StopMode raw fields come from OLD for unique shared IDs.\r\n"
-            << L"Invalid CSV pairs are excluded as whole files; NEW bytes are preserved.\r\n"
-            << L"Generation uses these captured bytes, including files changed on disk after comparison.\r\n\r\n";
+            << L"Path1 (OLD/Equipment): " << oldPath << L"\r\n"
+            << L"Path2 (NEW/PatchSet): " << newPath << L"\r\n\r\n";
         for (const auto& error : result.oldSnapshot.errors) report << L"[FATAL OLD] " << error << L"\r\n";
         for (const auto& error : result.newSnapshot.errors) report << L"[FATAL NEW] " << error << L"\r\n";
         if (!result.canGenerate)
@@ -38,10 +31,11 @@ namespace alarm
         {
             bool hasOld = result.oldSnapshot.files.count(path) != 0;
             bool hasNew = result.newSnapshot.files.count(path) != 0;
-            if (!hasOld) { ++newOnly; report << L"[NEW ONLY FILE] " << path << L"\r\n"; }
-            else if (!hasNew) { ++oldOnly; report << L"[OLD ONLY FILE] " << path << L"\r\n"; }
-            else { ++common; report << L"[COMMON FILE] " << path << (IsCsv(path) ? L"" : L" (non-CSV; content not compared)") << L"\r\n"; }
+            if (!hasOld) { ++newOnly; report << L"[Path2 ONLY] " << path << L"\r\n"; }
+            else if (!hasNew) { ++oldOnly; report << L"[Path1 ONLY] " << path << L"\r\n"; }
+            else ++common;
         }
+        if (!oldOnly && !newOnly && result.canGenerate) report << L"한쪽에만 있는 파일 없음\r\n";
         report << L"\r\n=== CSV DETAILS ===\r\n";
         for (const auto& path : paths)
         {
@@ -133,10 +127,10 @@ namespace alarm
                     {
                         changedIds.insert(change.id);
                         ++result.changedCells;
-                        if (change.whitespaceOnly) ++result.whitespaceCells;
+                        if (change.formatOnly) ++result.formatCells;
                         size_t mode = change.column == L"StopMode_Run" ? 0 : change.column == L"StopMode_Setup" ? 1 : 2;
                         ++modeCounts[mode];
-                        details << (change.whitespaceOnly ? L"[WHITESPACE ONLY]" : L"[VALUE CHANGED]")
+                        details << (change.formatOnly ? L"[FORMAT ONLY]" : L"[VALUE CHANGED]")
                             << L" ID=" << Quote(change.id) << L" Column=" << change.column
                             << L" OLD source line=" << change.oldLine << L" NEW/output line=" << change.newLine
                             << L"\r\n  NEW:    " << Quote(change.before) << L"\r\n  OUTPUT: " << Quote(change.after) << L"\r\n";
@@ -153,8 +147,8 @@ namespace alarm
                 << L" Byte-identical=" << unchanged << L" NEW-only=" << copiedNewOnly
                 << L" Non-CSV=" << nonCsv << L" Excluded=" << skipped << L"\r\n"
                 << L"Modified IDs=" << result.changedIds << L" StopMode cells=" << result.changedCells
-                << L" Value changes=" << result.changedCells - result.whitespaceCells
-                << L" Whitespace-only=" << result.whitespaceCells << L"\r\n"
+                << L" Value changes=" << result.changedCells - result.formatCells
+                << L" Format-only=" << result.formatCells << L"\r\n"
                 << L"Changed Run=" << modeCounts[0] << L" Setup=" << modeCounts[1] << L" Default=" << modeCounts[2] << L"\r\n";
             result.summary = summary.str();
             AppendReport(reportPath, L"\r\n=== AUTOCHANGE: NEW -> OUTPUT ===\r\n" + result.summary + details.str() +

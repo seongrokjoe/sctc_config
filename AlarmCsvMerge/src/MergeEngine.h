@@ -23,7 +23,7 @@ namespace alarm
         size_t changedFiles = 0;
         size_t changedIds = 0;
         size_t changedCells = 0;
-        size_t whitespaceCells = 0;
+        size_t formatCells = 0;
     };
     GenerationResult Generate(const Comparison& comparison, const std::wstring& outputParent,
         const std::wstring& reportPath);

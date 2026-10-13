@@ -58,50 +58,64 @@ namespace alarm
             return result;
         }
 
-        std::wstring Key(const std::wstring& header)
+        bool ParseFields(const std::wstring& line, std::vector<Field>& fields, std::wstring& error)
         {
-            if (header == L"AlarmID" || header == L"ID") return L"ID";
-            if (header == L"Action") return StopNames[0];
-            if (header == L"Recovery") return StopNames[1];
-            if (header == L"Note") return StopNames[2];
-            return header;
+            size_t position = 0;
+            for (;;)
+            {
+                Field field;
+                field.start = position;
+                if (position < line.size() && line[position] == L'"')
+                {
+                    ++position;
+                    bool closed = false;
+                    while (position < line.size())
+                    {
+                        wchar_t c = line[position++];
+                        if (c != L'"') field.value += c;
+                        else if (position < line.size() && line[position] == L'"')
+                        {
+                            field.value += L'"';
+                            ++position;
+                        }
+                        else { closed = true; break; }
+                    }
+                    if (!closed)
+                    {
+                        error = L"unclosed quoted field (multiline fields are not supported)";
+                        return false;
+                    }
+                    if (position < line.size() && line[position] != L',')
+                    {
+                        error = L"unexpected character after closing quote";
+                        return false;
+                    }
+                }
+                else
+                {
+                    while (position < line.size() && line[position] != L',')
+                    {
+                        if (line[position] == L'"')
+                        {
+                            error = L"quote inside an unquoted field";
+                            return false;
+                        }
+                        field.value += line[position++];
+                    }
+                }
+                field.length = position - field.start;
+                fields.push_back(std::move(field));
+                if (position == line.size()) return true;
+                ++position; // A trailing comma creates one final empty field.
+            }
         }
 
-        bool ParseFields(const std::wstring& line, size_t count, std::vector<Field>& fields)
+        std::wstring ColumnName(const Csv& oldCsv, const Csv& newCsv, size_t column)
         {
-            if (count < 10) return false;
-            std::vector<size_t> left, right;
-            size_t position = 0;
-            for (size_t i = 0; i < 6; ++i)
-            {
-                position = line.find(L',', position);
-                if (position == std::wstring::npos) return false;
-                left.push_back(position++);
-            }
-            position = line.size();
-            for (size_t i = 0; i < count - 7; ++i)
-            {
-                if (position == 0) return false;
-                position = line.rfind(L',', position - 1);
-                if (position == std::wstring::npos) return false;
-                right.push_back(position);
-            }
-            std::reverse(right.begin(), right.end());
-            if (left.back() >= right.front()) return false;
-            position = 0;
-            for (auto comma : left)
-            {
-                fields.push_back({ position, comma - position });
-                position = comma + 1;
-            }
-            fields.push_back({ position, right.front() - position });
-            for (size_t i = 0; i < right.size(); ++i)
-            {
-                size_t start = right[i] + 1;
-                size_t end = i + 1 < right.size() ? right[i + 1] : line.size();
-                fields.push_back({ start, end - start });
-            }
-            return true;
+            if (column >= 7 && column <= 9) return StopNames[column - 7];
+            if (column < newCsv.headers.size() && !newCsv.headers[column].empty()) return newCsv.headers[column];
+            if (column < oldCsv.headers.size() && !oldCsv.headers[column].empty()) return oldCsv.headers[column];
+            return L"Column " + std::to_wstring(column + 1);
         }
 
         std::wstring DescribeErrors(const wchar_t* side, const Csv& csv)
@@ -276,42 +290,36 @@ namespace alarm
             const auto& line = csv.document.lines[i].text;
             auto trimmed = Trim(line);
             if (trimmed.empty() || trimmed[0] == L'#') continue;
+            std::vector<Field> fields;
+            std::wstring fieldError;
+            if (!ParseFields(line, fields, fieldError))
+            {
+                csv.errors.push_back(L"Line " + std::to_wstring(i + 1) + L": " + fieldError);
+                if (!header) return csv;
+                continue;
+            }
             if (!header)
             {
                 header = true;
-                size_t start = 0;
-                for (;;)
-                {
-                    size_t comma = line.find(L',', start);
-                    csv.headers.push_back(Trim(line.substr(start, comma == std::wstring::npos ? comma : comma - start)));
-                    if (comma == std::wstring::npos) break;
-                    start = comma + 1;
-                }
-                std::set<std::wstring> keys;
-                for (const auto& name : csv.headers)
-                {
-                    auto key = Key(name);
-                    csv.keys.push_back(key);
-                    if (name.empty() || !keys.insert(key).second)
-                        csv.errors.push_back(L"Line " + std::to_wstring(i + 1) + L": empty or duplicate header " + Quote(name));
-                }
-                if (csv.keys.size() < 10 || csv.keys[0] != L"ID" || csv.keys[6] != L"Description" ||
-                    csv.keys[7] != StopNames[0] || csv.keys[8] != StopNames[1] || csv.keys[9] != StopNames[2])
+                for (const auto& field : fields) csv.headers.push_back(Trim(field.value));
+                if (csv.headers.size() < 10)
                 {
                     csv.errors.push_back(L"Line " + std::to_wstring(i + 1) +
-                        L": unsupported core columns (ID=1, Description=7, StopMode=8/9/10)");
+                        L": header must contain at least 10 columns");
                     return csv;
                 }
+                continue; // Header names are display labels only, never alarm data.
+            }
+            if (fields.size() != csv.headers.size())
+            {
+                csv.errors.push_back(L"Line " + std::to_wstring(i + 1) + L": column count mismatch (expected " +
+                    std::to_wstring(csv.headers.size()) + L", actual " + std::to_wstring(fields.size()) + L")");
                 continue;
             }
             Row row;
             row.line = i;
-            if (!ParseFields(line, csv.keys.size(), row.fields))
-            {
-                csv.errors.push_back(L"Line " + std::to_wstring(i + 1) + L": cannot locate alarm field boundaries");
-                continue;
-            }
-            row.id = Trim(line.substr(row.fields[0].start, row.fields[0].length));
+            row.fields = std::move(fields);
+            row.id = Trim(row.fields[0].value);
             if (row.id.empty())
                 csv.errors.push_back(L"Line " + std::to_wstring(i + 1) + L": empty ID");
             else
@@ -328,7 +336,12 @@ namespace alarm
         return csv;
     }
 
-    std::wstring GetField(const Csv& csv, const Row& row, size_t column)
+    std::wstring GetField(const Csv&, const Row& row, size_t column)
+    {
+        return row.fields.at(column).value;
+    }
+
+    std::wstring GetRawField(const Csv& csv, const Row& row, size_t column)
     {
         const auto& field = row.fields.at(column);
         return csv.document.lines.at(row.line).text.substr(field.start, field.length);
@@ -364,25 +377,7 @@ namespace alarm
             result.diff = out.str();
             return result;
         }
-        if (oldCsv.headers != newCsv.headers)
-        {
-            out << L"[HEADER CHANGED] OLD:";
-            for (const auto& h : oldCsv.headers) out << L" " << Quote(h);
-            out << L"\r\n                    NEW:";
-            for (const auto& h : newCsv.headers) out << L" " << Quote(h);
-            out << L"\r\n";
-        }
-        std::map<std::wstring, size_t> oldColumns, newColumns;
-        for (size_t i = 0; i < oldCsv.keys.size(); ++i) oldColumns.emplace(oldCsv.keys[i], i);
-        for (size_t i = 0; i < newCsv.keys.size(); ++i) newColumns.emplace(newCsv.keys[i], i);
-        std::vector<std::wstring> columns = newCsv.keys;
-        for (const auto& key : oldCsv.keys)
-            if (!newColumns.count(key)) columns.push_back(key);
-        for (const auto& key : columns)
-        {
-            if (!oldColumns.count(key)) out << L"[NEW ONLY COLUMN] " << Quote(key) << L"\r\n";
-            if (!newColumns.count(key)) out << L"[OLD ONLY COLUMN] " << Quote(key) << L"\r\n";
-        }
+        const size_t columnCount = (std::max)(oldCsv.headers.size(), newCsv.headers.size());
         std::set<std::wstring> ids;
         for (const auto& p : oldCsv.ids) ids.insert(p.first);
         for (const auto& p : newCsv.ids) ids.insert(p.first);
@@ -404,37 +399,36 @@ namespace alarm
             const Row& oldRow = oldCsv.rows[oldEntry->second];
             const Row& newRow = newCsv.rows[newEntry->second];
             bool different = false;
-            for (const auto& column : columns)
+            for (size_t column = 1; column < columnCount; ++column)
             {
-                if (column == L"ID") continue;
-                auto oldCol = oldColumns.find(column), newCol = newColumns.find(column);
-                bool hasOld = oldCol != oldColumns.end(), hasNew = newCol != newColumns.end();
-                auto oldValue = hasOld ? GetField(oldCsv, oldRow, oldCol->second) : L"";
-                auto newValue = hasNew ? GetField(newCsv, newRow, newCol->second) : L"";
+                bool hasOld = column < oldRow.fields.size(), hasNew = column < newRow.fields.size();
+                auto oldValue = hasOld ? GetField(oldCsv, oldRow, column) : L"";
+                auto newValue = hasNew ? GetField(newCsv, newRow, column) : L"";
                 if (hasOld == hasNew && Trim(oldValue) == Trim(newValue)) continue;
-                bool stop = column == StopNames[0] || column == StopNames[1] || column == StopNames[2];
+                bool stop = column >= 7 && column <= 9;
                 if (stop) ++result.stopCells; else ++result.otherCells;
                 different = true;
                 out << (stop ? L"[STOPMODE]" : L"[OTHER COLUMN]") << L" ID=" << Quote(id)
-                    << L" Column=" << Quote(column) << L" OLD line=" << oldRow.line + 1
-                    << L" NEW line=" << newRow.line + 1 << L"\r\n  OLD: "
+                    << L" Column=" << column + 1 << L" Name=" << Quote(ColumnName(oldCsv, newCsv, column))
+                    << L" OLD line=" << oldRow.line + 1 << L" NEW line=" << newRow.line + 1 << L"\r\n  OLD: "
                     << (hasOld ? Quote(oldValue) : L"<MISSING COLUMN>") << L"\r\n  NEW: "
                     << (hasNew ? Quote(newValue) : L"<MISSING COLUMN>") << L"\r\n";
             }
             if (different) ++result.differentIds;
             for (size_t column = 7; column <= 9; ++column)
             {
-                auto oldValue = GetField(oldCsv, oldRow, column);
-                auto newValue = GetField(newCsv, newRow, column);
+                auto oldValue = GetRawField(oldCsv, oldRow, column);
+                auto newValue = GetRawField(newCsv, newRow, column);
                 if (oldValue == newValue) continue;
                 result.changes.push_back({ id, StopNames[column - 7], newValue, oldValue,
-                    oldRow.line + 1, newRow.line + 1, Trim(oldValue) == Trim(newValue) });
+                    oldRow.line + 1, newRow.line + 1,
+                    Trim(GetField(oldCsv, oldRow, column)) == Trim(GetField(newCsv, newRow, column)) });
             }
             // Replace right to left; all untouched character spans stay exactly as NEW.
             for (size_t column = 10; column-- > 7;)
             {
                 const auto& field = newRow.fields[column];
-                merged.lines[newRow.line].text.replace(field.start, field.length, GetField(oldCsv, oldRow, column));
+                merged.lines[newRow.line].text.replace(field.start, field.length, GetRawField(oldCsv, oldRow, column));
             }
         }
         try
@@ -453,7 +447,7 @@ namespace alarm
             out << L"[AUTOCHANGE EXCLUDED] " << std::wstring(message.begin(), message.end())
                 << L"; NEW bytes will be copied unchanged.\r\n";
         }
-        if (!result.differentIds && !result.oldOnlyIds && !result.newOnlyIds && oldCsv.headers == newCsv.headers)
+        if (!result.differentIds && !result.oldOnlyIds && !result.newOnlyIds)
             out << L"[NO VALUE DIFFERENCES] (leading/trailing whitespace ignored)\r\n";
         out << L"IDs OLD=" << result.oldIds << L" NEW=" << result.newIds << L" COMMON=" << result.commonIds
             << L" OLD_ONLY=" << result.oldOnlyIds << L" NEW_ONLY=" << result.newOnlyIds

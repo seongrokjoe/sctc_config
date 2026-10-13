@@ -27,6 +27,7 @@ namespace alarm
     {
         size_t start = 0;
         size_t length = 0;
+        std::wstring value;
     };
 
     struct Row
@@ -40,7 +41,6 @@ namespace alarm
     {
         Document document;
         std::vector<std::wstring> headers;
-        std::vector<std::wstring> keys;
         std::vector<Row> rows;
         std::map<std::wstring, size_t> ids;
         std::vector<std::wstring> errors;
@@ -55,6 +55,8 @@ namespace alarm
     Csv ParseCsv(const Bytes& bytes);
     std::wstring GetField(const Csv& csv, const Row& row, size_t column);
 
+    std::wstring GetRawField(const Csv& csv, const Row& row, size_t column);
+
     struct CellChange
     {
         std::wstring id;
@@ -63,7 +65,7 @@ namespace alarm
         std::wstring after;
         size_t oldLine = 0;
         size_t newLine = 0;
-        bool whitespaceOnly = false;
+        bool formatOnly = false;
     };
 
     struct PairResult
