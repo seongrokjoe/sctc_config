@@ -447,8 +447,6 @@ namespace alarm
             out << L"[AUTOCHANGE EXCLUDED] " << std::wstring(message.begin(), message.end())
                 << L"; NEW bytes will be copied unchanged.\r\n";
         }
-        if (!result.differentIds && !result.oldOnlyIds && !result.newOnlyIds)
-            out << L"[NO VALUE DIFFERENCES] (leading/trailing whitespace ignored)\r\n";
         out << L"IDs OLD=" << result.oldIds << L" NEW=" << result.newIds << L" COMMON=" << result.commonIds
             << L" OLD_ONLY=" << result.oldOnlyIds << L" NEW_ONLY=" << result.newOnlyIds
             << L" DIFFERENT=" << result.differentIds << L"; StopMode cells=" << result.stopCells

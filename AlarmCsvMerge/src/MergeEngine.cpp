@@ -45,7 +45,8 @@ namespace alarm
             const Bytes* oldBytes = oldEntry == result.oldSnapshot.files.end() ? nullptr : &oldEntry->second.bytes;
             const Bytes* newBytes = newEntry == result.newSnapshot.files.end() ? nullptr : &newEntry->second.bytes;
             PairResult pair = CompareCsv(oldBytes, newBytes);
-            report << L"\r\n--- File: " << path << L" ---\r\n" << pair.diff;
+            if (!oldBytes || !newBytes || pair.skipped || pair.differentIds || pair.oldOnlyIds || pair.newOnlyIds)
+                report << L"\r\n--- File: " << path << L" ---\r\n" << pair.diff;
             if (pair.skipped)
             {
                 ++unvalidated;
@@ -103,21 +104,23 @@ namespace alarm
                 auto path = JoinPath(owned, file.relative);
                 WriteNewBytes(path, bytes);
                 if (ReadBytes(path) != bytes) throw IoError(L"Output read-back mismatch: " + path);
-                details << L"\r\nFile: " << file.relative << L"\r\n";
                 bool newOnly = comparison.oldSnapshot.files.count(entry.first) == 0;
+                if (newOnly || (pair != comparison.csvResults.end() &&
+                    (pair->second.skipped || !pair->second.changes.empty())))
+                    details << L"\r\nFile: " << file.relative << L"\r\n";
                 if (newOnly) ++copiedNewOnly;
                 if (pair == comparison.csvResults.end())
                 {
                     ++nonCsv;
-                    details << L"[COPIED NON-CSV] unchanged bytes" << (newOnly ? L"; NEW-only file" : L"") << L"\r\n";
+                    if (newOnly) details << L"[COPIED NON-CSV] unchanged bytes; NEW-only file\r\n";
                 }
                 else if (pair->second.skipped)
                 {
                     ++skipped;
                     details << L"[EXCLUDED] copied NEW bytes; see CSV error details above.\r\n";
                 }
-                else if (pair->second.changes.empty())
-                    details << (newOnly ? L"[COPIED NEW-ONLY]" : L"[UNCHANGED]") << L"\r\n";
+                else if (newOnly)
+                    details << L"[COPIED NEW-ONLY]\r\n";
                 if (bytes == file.bytes) ++unchanged;
                 else ++result.changedFiles;
                 if (pair != comparison.csvResults.end())

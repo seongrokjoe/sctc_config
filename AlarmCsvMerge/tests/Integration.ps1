@@ -89,6 +89,14 @@ try {
     Put-Text "$new\Duplicate.csv" ($header + $lf + (Row 'A') + $lf + (Row 'B'))
     Put-Text "$new\Malformed.csv" ($header + $lf + 'A,short')
     [IO.File]::WriteAllBytes("$new\payload.bin", [byte[]](0, 255, 129, 0, 13, 10))
+    $unchangedNames = @('Unchanged.csv', 'Equivalent.csv', 'HeaderOnly.csv', 'common.bin')
+    foreach ($dir in @($old, $new)) {
+        Put-Text "$dir\Unchanged.csv" ($header + $lf + (Row 'SAME'))
+        Put-Text "$dir\HeaderOnly.csv" ($header + $lf)
+        [IO.File]::WriteAllBytes("$dir\common.bin", [byte[]](0, 255, 13, 10))
+    }
+    Put-Text "$old\Equivalent.csv" ($header + $crlf + (Row 'B') + $crlf + (Row 'A' 'DisplayOnly:1' 'Setup:2' 'Default:3' '  Description  '))
+    Put-Text "$new\Equivalent.csv" ($header.Replace('Number,Label', 'ID,Name') + $lf + (Row 'A') + $lf + (Row 'B'))
     $beforeOld = Tree-Hash $old
     $beforeNew = Tree-Hash $new
 
@@ -106,6 +114,12 @@ try {
     Assert-True (!$report.Contains("unsupported core columns")) "Arbitrary header names must be accepted."
     Assert-True (!$inventory[0].Contains("BM.csv") -and !$inventory[0].Contains("COMMON FILE")) "Inventory must omit common files."
     Assert-True ($inventory[0].Contains("[Path1 ONLY] OldOnly.csv") -and $inventory[0].Contains("[Path2 ONLY] NewOnly.csv")) "Inventory must identify the side."
+    foreach ($name in $unchangedNames) {
+        Assert-True (!$report.Contains($name)) "Unchanged file name must be absent: $name"
+    }
+    Assert-True (!$report.Contains('NO VALUE DIFFERENCES')) 'No-difference markers must be absent.'
+    Assert-True ($report.Contains('CSV union=9')) 'Summary must count omitted CSV files.'
+    Assert-True ($report.Contains('--- File: BM.csv ---') -and $report.Contains('--- File: Duplicate.csv ---')) 'Differences and errors must remain visible.'
     $reportBytes = [IO.File]::ReadAllBytes($reports[0].FullName)
     Assert-True ($reportBytes[0] -eq 239 -and $reportBytes[1] -eq 187 -and $reportBytes[2] -eq 191) 'Report must have UTF-8 BOM.'
     Passed 'N: report, exact ID differences, no output folder'
@@ -115,12 +129,16 @@ try {
     Assert-True ([IO.File]::ReadAllText("$tools\Alarm\BM.csv") -ceq $expectedBm) 'BM.csv merge mismatch.'
     Assert-True ([IO.File]::ReadAllText("$tools\Alarm\sub\bm.CSV").Contains('SUB_OLD')) 'Relative path/case-insensitive match failed.'
     Assert-True (!(Test-Path -LiteralPath "$tools\Alarm\OldOnly.csv")) 'OLD-only file must not be generated.'
-    foreach ($name in @('NewOnly.csv', 'Duplicate.csv', 'Malformed.csv', 'payload.bin')) {
+    foreach ($name in (@('NewOnly.csv', 'Duplicate.csv', 'Malformed.csv', 'payload.bin') + $unchangedNames)) {
         Assert-True ((Get-FileHash -LiteralPath "$tools\Alarm\$name").Hash -eq (Get-FileHash -LiteralPath "$new\$name").Hash) "Copy must preserve all bytes: $name"
     }
     Assert-True (Test-Path -LiteralPath "$tools\Alarm\empty" -PathType Container) 'Empty directory missing.'
     $report = [IO.File]::ReadAllText((Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt' | Sort-Object LastWriteTimeUtc | Select-Object -Last 1).FullName)
     Assert-True ($report.Contains('[AUTOCHANGE COMPLETE]') -and $report.Contains('Modified=2') -and $report.Contains('Excluded=2')) 'Generation summary incorrect.'
+    foreach ($name in $unchangedNames) {
+        Assert-True (!$report.Contains($name)) "Unchanged file must stay absent after AutoChange: $name"
+    }
+    Assert-True (!$report.Contains('[UNCHANGED]') -and !$report.Contains('NO VALUE DIFFERENCES')) 'AutoChange must omit unchanged-file details.'
     Passed 'Y: merge, nested files, case matching, exclusions, binary and empty directory copy'
 
     $firstOutputHash = Tree-Hash "$tools\Alarm"
