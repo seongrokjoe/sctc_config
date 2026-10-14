@@ -1,6 +1,7 @@
 ﻿param([Parameter(Mandatory = $true)][string]$ExePath)
 $ErrorActionPreference = 'Stop'
 $ExePath = (Resolve-Path -LiteralPath $ExePath).Path
+if ((Split-Path -Leaf $ExePath) -cne 'SCTC_Alarm_Compare.exe') { throw 'Expected build output SCTC_Alarm_Compare.exe.' }
 $fixtureParent = Join-Path (Split-Path -Parent $PSScriptRoot) 'build'
 New-Item -ItemType Directory -Force -Path $fixtureParent | Out-Null
 $fixture = Join-Path $fixtureParent ('integration_' + [Guid]::NewGuid().ToString('N'))
@@ -12,6 +13,14 @@ $passed = 0
 
 function Assert-True([bool]$Value, [string]$Message) {
     if (!$Value) { throw $Message }
+}
+function Report-Section([string]$Text, [string]$Title, [string]$Next) {
+    $first = $Text.IndexOf($Title, [StringComparison]::Ordinal)
+    Assert-True ($first -ge 0) "Missing report category: $Title"
+    $start = $first + $Title.Length
+    $end = $Text.IndexOf($Next, $start, [StringComparison]::Ordinal)
+    Assert-True ($end -ge 0) "Missing or out-of-order report category: $Next"
+    return $Text.Substring($start, $end - $start)
 }
 function Row([string]$Id, [string]$Run = 'DisplayOnly:1', [string]$Setup = 'Setup:2', [string]$Default = 'Default:3', [string]$Description = 'Description') {
     $values = @($Id, 'Name', 'WARN', 'Category', 'Module', 'Sub', $Description, $Run, $Setup, $Default)
@@ -75,7 +84,7 @@ try {
     foreach ($dir in @($old, $new, $tools, "$old\sub", "$new\sub", "$new\empty")) {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
     }
-    $exe = Join-Path $tools 'AlarmCsvMerge.exe'
+    $exe = Join-Path $tools 'SCTC_Alarm_Compare.exe'
     Copy-Item -LiteralPath $ExePath -Destination $exe
     Put-Text "$old\BM.csv" ($header + $crlf + (Row '2002') + $crlf + (Row '1001' 'EMGStop:5|6' 'SetupOld:2' '' 'old') + $crlf + (Row '9000'))
     $newBm = $header + $lf + (Row '1001' 'DisplayOnly:1' 'SetupNew:2' 'Default:3' 'new, description with ""quotes""') + $lf + (Row '3003') + $lf + (Row '2002')
@@ -89,7 +98,7 @@ try {
     Put-Text "$new\Duplicate.csv" ($header + $lf + (Row 'A') + $lf + (Row 'B'))
     Put-Text "$new\Malformed.csv" ($header + $lf + 'A,short')
     [IO.File]::WriteAllBytes("$new\payload.bin", [byte[]](0, 255, 129, 0, 13, 10))
-    $unchangedNames = @('Unchanged.csv', 'Equivalent.csv', 'HeaderOnly.csv', 'common.bin')
+    $unchangedNames = @('Unchanged.csv', 'Equivalent.csv', 'QuoteEquivalent.csv', 'HeaderOnly.csv', 'common.bin')
     foreach ($dir in @($old, $new)) {
         Put-Text "$dir\Unchanged.csv" ($header + $lf + (Row 'SAME'))
         Put-Text "$dir\HeaderOnly.csv" ($header + $lf)
@@ -97,6 +106,11 @@ try {
     }
     Put-Text "$old\Equivalent.csv" ($header + $crlf + (Row 'B') + $crlf + (Row 'A' 'DisplayOnly:1' 'Setup:2' 'Default:3' '  Description  '))
     Put-Text "$new\Equivalent.csv" ($header.Replace('Number,Label', 'ID,Name') + $lf + (Row 'A') + $lf + (Row 'B'))
+    Put-Text "$old\QuoteEquivalent.csv" ($header + $lf + 'E,Name,WARN,Category,Module,Sub,abc""def,DisplayOnly:1,Setup:2,Default:3')
+    Put-Text "$new\QuoteEquivalent.csv" ($header + $lf + (Row 'E' 'DisplayOnly:1' 'Setup:2' 'Default:3' 'abc"def'))
+    Put-Text "$old\Quotes.csv" ($header + $lf + 'Q,Name,WARN,Category,Module,Sub,"memo, ""quoted""",EMG""stop,""Setup"",')
+    Put-Text "$new\Quotes.csv" ($header + $crlf + 'Q,Name,WARN,Category,Module,Sub,memo""new,NEW,NEWSETUP,NEWDEF')
+    $expectedQuotes = $header + $crlf + 'Q,Name,WARN,Category,Module,Sub,memo""new,EMG""stop,""Setup"",'
     $beforeOld = Tree-Hash $old
     $beforeNew = Tree-Hash $new
 
@@ -106,19 +120,32 @@ try {
     $reports = @(Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt')
     Assert-True ($reports.Count -eq 1) 'N must write exactly one report.'
     $report = [IO.File]::ReadAllText($reports[0].FullName)
-    foreach ($token in @('Path1 ONLY', 'Path2 ONLY', 'OLD ONLY ID', 'NEW ONLY ID', 'StopMode_Run', 'EMGStop:5|6', 'OTHER COLUMN', 'Duplicate ID', 'AUTOCHANGE NOT REQUESTED')) {
+    foreach ($token in @('Path1 ONLY', 'Path2 ONLY', 'Path1 ONLY ID', 'Path2 ONLY ID', 'StopMode_Run', 'EMGStop:5|6', 'OTHER COLUMN', 'Duplicate ID', 'AUTOCHANGE NOT REQUESTED')) {
         Assert-True ($report.Contains($token)) "Missing report token: $token"
     }
-    $inventory = ($report -split "=== FILE INVENTORY ===", 2)[1] -split "=== CSV DETAILS ===", 2
+    $inventory = Report-Section $report '<알람 파일 List 차이>' '<파일별 StopMode 차이>'
+    $stopModes = Report-Section $report '<파일별 StopMode 차이>' '<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>'
+    $onlyIds = Report-Section $report '<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>' '<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>'
+    $otherColumns = Report-Section $report '<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>' '=== 오류 및 비교 제외 내역 ==='
+    $diagnostics = Report-Section $report '=== 오류 및 비교 제외 내역 ===' '=== SUMMARY ==='
     Assert-True (!$report.Contains("Rules:") -and !$report.Contains("CSV layout:")) "Rules block must be absent."
     Assert-True (!$report.Contains("unsupported core columns")) "Arbitrary header names must be accepted."
-    Assert-True (!$inventory[0].Contains("BM.csv") -and !$inventory[0].Contains("COMMON FILE")) "Inventory must omit common files."
-    Assert-True ($inventory[0].Contains("[Path1 ONLY] OldOnly.csv") -and $inventory[0].Contains("[Path2 ONLY] NewOnly.csv")) "Inventory must identify the side."
+    Assert-True (!$inventory.Contains("BM.csv") -and !$inventory.Contains("COMMON FILE") -and !$report.Contains('payload.bin')) "Inventory must omit common and non-CSV files."
+    Assert-True ($inventory.Contains("[Path1 ONLY]" + $crlf + "  OldOnly.csv") -and $inventory.Contains("[Path2 ONLY]" + $crlf + "  Malformed.csv" + $crlf + "  NewOnly.csv")) "Inventory must group and sort files by side."
+    Assert-True ($stopModes.Contains('--- File: BM.csv ---') -and $stopModes.Contains('--- File: sub\BM.csv ---') -and !$stopModes.Contains('OTHER COLUMN')) 'StopMode category mismatch.'
+    Assert-True ($onlyIds.Contains('[Path1 ONLY ID]' + $crlf + 'ID="9000" Name="Name" Line=4') -and $onlyIds.Contains('[Path2 ONLY ID]' + $crlf + 'ID="3003" Name="Name" Line=3')) 'ID list must contain ID, Name and physical Line.'
+    Assert-True (!$onlyIds.Contains('OldOnly.csv') -and !$onlyIds.Contains('NewOnly.csv') -and !$onlyIds.Contains('sub\BM.csv')) 'ID lists must omit whole-file and StopMode-only differences.'
+    Assert-True ($otherColumns.Contains('--- File: BM.csv ---') -and !$otherColumns.Contains('sub\BM.csv') -and !$otherColumns.Contains('[STOPMODE]')) 'Other columns must exclude StopModes.'
+    Assert-True ($diagnostics.Contains('Duplicate.csv') -and $diagnostics.Contains('Malformed.csv') -and $diagnostics.Contains('[ERROR Path1]')) 'Errors must appear in separate diagnostics.'
+    foreach ($section in @($stopModes, $onlyIds, $otherColumns)) {
+        Assert-True (!$section.Contains('Duplicate.csv') -and !$section.Contains('Malformed.csv')) 'Invalid CSVs must not enter value or ID categories.'
+    }
+    Assert-True ($stopModes.Contains('Quotes.csv') -and $otherColumns.Contains('Quotes.csv') -and !$diagnostics.Contains('Quotes.csv')) 'Doubled quotes must compare normally.'
     foreach ($name in $unchangedNames) {
         Assert-True (!$report.Contains($name)) "Unchanged file name must be absent: $name"
     }
     Assert-True (!$report.Contains('NO VALUE DIFFERENCES')) 'No-difference markers must be absent.'
-    Assert-True ($report.Contains('CSV union=9')) 'Summary must count omitted CSV files.'
+    Assert-True ($report.Contains('CSV union=11')) 'Summary must count omitted CSV files.'
     Assert-True ($report.Contains('--- File: BM.csv ---') -and $report.Contains('--- File: Duplicate.csv ---')) 'Differences and errors must remain visible.'
     $reportBytes = [IO.File]::ReadAllBytes($reports[0].FullName)
     Assert-True ($reportBytes[0] -eq 239 -and $reportBytes[1] -eq 187 -and $reportBytes[2] -eq 191) 'Report must have UTF-8 BOM.'
@@ -127,6 +154,7 @@ try {
     $response = Invoke-Console $exe ($old + $lf + $new + $lf + 'Y' + $lf)
     Assert-True ($response.Code -eq 2) "Y exit code: $($response.Code) $($response.Err)"
     Assert-True ([IO.File]::ReadAllText("$tools\Alarm\BM.csv") -ceq $expectedBm) 'BM.csv merge mismatch.'
+    Assert-True ([IO.File]::ReadAllText("$tools\Alarm\Quotes.csv") -ceq $expectedQuotes) 'Doubled quotes and raw StopMode spans must survive AutoChange.'
     Assert-True ([IO.File]::ReadAllText("$tools\Alarm\sub\bm.CSV").Contains('SUB_OLD')) 'Relative path/case-insensitive match failed.'
     Assert-True (!(Test-Path -LiteralPath "$tools\Alarm\OldOnly.csv")) 'OLD-only file must not be generated.'
     foreach ($name in (@('NewOnly.csv', 'Duplicate.csv', 'Malformed.csv', 'payload.bin') + $unchangedNames)) {
@@ -134,7 +162,7 @@ try {
     }
     Assert-True (Test-Path -LiteralPath "$tools\Alarm\empty" -PathType Container) 'Empty directory missing.'
     $report = [IO.File]::ReadAllText((Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt' | Sort-Object LastWriteTimeUtc | Select-Object -Last 1).FullName)
-    Assert-True ($report.Contains('[AUTOCHANGE COMPLETE]') -and $report.Contains('Modified=2') -and $report.Contains('Excluded=2')) 'Generation summary incorrect.'
+    Assert-True ($report.Contains('[AUTOCHANGE COMPLETE]') -and $report.Contains('Modified=3') -and $report.Contains('Excluded=2')) 'Generation summary incorrect.'
     foreach ($name in $unchangedNames) {
         Assert-True (!$report.Contains($name)) "Unchanged file must stay absent after AutoChange: $name"
     }
@@ -169,7 +197,7 @@ try {
 
     $snapshotTools = Join-Path $fixture 'snapshot-tools'
     New-Item -ItemType Directory -Path $snapshotTools | Out-Null
-    $snapshotExe = Join-Path $snapshotTools 'AlarmCsvMerge.exe'
+    $snapshotExe = Join-Path $snapshotTools 'SCTC_Alarm_Compare.exe'
     Copy-Item -LiteralPath $ExePath -Destination $snapshotExe
     $session = Start-Console $snapshotExe
     try {

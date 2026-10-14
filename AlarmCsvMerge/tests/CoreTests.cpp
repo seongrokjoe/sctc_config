@@ -59,7 +59,8 @@ namespace
         Check(!result.skipped && result.output == expected, "Exact requested BM/1001 merge");
         Check(result.stopCells == 3 && result.otherCells == 2 && result.differentIds == 1, "Diff counts");
         Check(result.commonIds == 2 && result.oldOnlyIds == 1 && result.newOnlyIds == 1, "Unsorted matching");
-        Check(result.changes.size() == 3 && Has(result.diff, L"EMGStop:5|6") && Has(result.diff, L"OLD ONLY ID"), "Full diff");
+        Check(result.changes.size() == 3 && Has(result.stopModeDiff, L"EMGStop:5|6") &&
+            Has(result.oldOnlyDiff, L"OLD_ONLY") && Has(result.newOnlyDiff, L"NEW_ONLY"), "Categorized diff");
         Check(oldBytes == beforeOld && newBytes == beforeNew, "Original buffers immutable");
     }
 
@@ -95,7 +96,7 @@ namespace
         auto newBytes = B(NamedHeader + L",Second,First\n" + R(L"A") + L",two,one");
         auto result = CompareCsv(&oldBytes, &newBytes);
         Check(!result.skipped && result.stopCells == 0 && result.otherCells == 2, "Renamed/reordered headers still compare field positions");
-        Check(result.output == newBytes && !Has(result.diff, L"HEADER CHANGED"), "Header labels are not compared");
+        Check(result.output == newBytes && !Has(result.otherColumnDiff, L"HEADER CHANGED"), "Header labels are not compared");
     }
 
     void MissingVersusEmptyColumn()
@@ -103,9 +104,9 @@ namespace
         auto oldBytes = B(Header + L",Extra,\n" + R(L"A") + L",,");
         auto newBytes = B(Header + L",Renamed\n" + R(L"A") + L",");
         auto result = CompareCsv(&oldBytes, &newBytes);
-        Check(!result.skipped && result.otherCells == 1 && Has(result.diff, L"<MISSING COLUMN>"),
+        Check(!result.skipped && result.otherCells == 1 && Has(result.otherColumnDiff, L"<MISSING COLUMN>"),
             "Missing position differs from empty while renamed equal fields do not differ");
-        Check(Has(result.diff, L"Column=12") && Has(result.diff, L"Column 12"), "Unnamed column uses position label");
+        Check(Has(result.otherColumnDiff, L"Column=12") && Has(result.otherColumnDiff, L"Column 12"), "Unnamed column uses position label");
     }
 
     void DuplicatesExcludeWholeFile()
@@ -114,7 +115,7 @@ namespace
         auto duplicate = B(Header + L"\n" + R(L"A", L"OLD") + L"\n" + R(L" A ", L"OTHER") + L"\n" + R(L"B", L"OLD"));
         auto result = CompareCsv(&duplicate, &good);
         Check(result.skipped && result.output == good && result.changes.empty(), "OLD duplicate excludes entire file");
-        Check(Has(result.diff, L"lines 2, 3"), "Duplicate lines reported");
+        Check(Has(result.diagnostics, L"lines 2, 3"), "Duplicate lines reported");
         result = CompareCsv(&good, &duplicate);
         Check(result.skipped && result.output == duplicate && result.changes.empty(), "NEW duplicate excludes entire file");
     }
@@ -138,9 +139,9 @@ namespace
         {
             auto bytes = B(text);
             auto result = CompareCsv(&bytes, &good);
-            Check(result.skipped && result.output == good && Has(result.diff, L"ERROR"), "Invalid source copies NEW unchanged");
+            Check(result.skipped && result.output == good && Has(result.diagnostics, L"ERROR"), "Invalid source copies NEW unchanged");
             result = CompareCsv(&bytes, nullptr);
-            Check(result.skipped && result.output.empty() && Has(result.diff, L"OLD-only file is not generated"), "Invalid OLD-only files are never copied");
+            Check(result.skipped && result.output.empty() && Has(result.diagnostics, L"Path1-only file is not generated"), "Invalid OLD-only files are never copied");
         }
     }
 
@@ -160,7 +161,7 @@ namespace
             auto result = CompareCsv(&oldBytes, &newBytes);
             Check(!result.skipped && result.oldIds == 1 && result.newIds == 1 && result.commonIds == 1,
                 "Header is excluded from ID matching regardless of labels");
-            Check(result.differentIds == 0 && result.output == newBytes && !Has(result.diff, L"HEADER"),
+            Check(result.differentIds == 0 && result.output == newBytes && result.stopModeDiff.empty() && result.otherColumnDiff.empty(),
                 "Header-only renames do not produce differences");
         }
     }
@@ -177,6 +178,77 @@ namespace
         for (const auto& change : result.changes) Check(change.formatOnly, "Quote-only changes are formatting");
         auto duplicate = B(Header + L"\n" + R(L"1001") + L"\n\"1001\",name,WARN,Cat,Module,Sub,message,RUN,SETUP,DEFAULT");
         Check(CompareCsv(&duplicate, &newBytes).skipped, "Quoted and unquoted equivalent IDs are duplicates");
+    }
+
+    void DoubledQuotesInFields()
+    {
+        const std::vector<std::pair<std::wstring, std::wstring>> cases = {
+            { L"abc\"\"def", L"abc\"def" },
+            { L"\"abc,def\"", L"abc,def" },
+            { L"\"abc \"\"def\"\", ghi\"", L"abc \"def\", ghi" },
+            { L"\"\"abc\"\"", L"\"abc\"" },
+            { L"\"\"", L"" },
+            { L"\"\"\"\"", L"\"" },
+            { L"\"\"abc", L"\"abc" },
+            { L"abc\"\"", L"abc\"" },
+            { L"abc\"\"\"\"def", L"abc\"\"def" },
+            { L"", L"" }
+        };
+        for (const auto& entry : cases)
+        {
+            const auto text = Header + L"\r\nA,name,WARN,Cat,Module,Sub," + entry.first +
+                L",RUN,SETUP," + entry.first;
+            const auto bytes = B(text);
+            const auto csv = ParseCsv(bytes);
+            Check(csv.errors.empty() && csv.rows.size() == 1, "Doubled quotes accepted in middle and final fields");
+            const auto& row = csv.rows.at(0);
+            Check(row.fields.size() == 10 && GetField(csv, row, 6) == entry.second &&
+                GetField(csv, row, 9) == entry.second, "Quotes and commas decoded without changing field boundaries");
+            Check(GetRawField(csv, row, 6) == entry.first && GetRawField(csv, row, 9) == entry.first,
+                "Raw quote spans retained for copying, including trailing empty values");
+            const auto equivalent = B(Header + L"\n" + R(L"A", L"RUN", L"SETUP", entry.second, entry.second));
+            const auto diff = CompareCsv(&bytes, &equivalent);
+            Check(!diff.skipped && diff.differentIds == 0 && diff.stopModeDiff.empty() &&
+                diff.otherColumnDiff.empty(), "Equivalent quoted spellings are not value differences");
+        }
+
+        const std::vector<std::wstring> invalid = {
+            L"abc\"def", L"abc\"\"\"def", L"\"abc", L"\"abc\"tail", L"\"\"abc\"",
+            L"\"\"\"", L"abc,def", L"\"abc\nxyz\""
+        };
+        for (const auto& field : invalid)
+        {
+            const auto bytes = B(Header + L"\nA,name,WARN,Cat,Module,Sub," + field + L",RUN,SETUP,DEF");
+            Check(!ParseCsv(bytes).errors.empty(), "Invalid lone quotes, unwrapped commas and multiline fields remain errors");
+        }
+    }
+
+    void DoubledQuoteIdsAndRawMerge()
+    {
+        const auto oldText = Header + L"\nA\"\"B,\"\"old\"\",WARN,Cat,Module,Sub,old,EMG\"\"stop,\"\"setup\"\",\"\"";
+        const auto newText = L"# keep\r\n" + Header + L"\r\n" +
+            R(L"A\"B", L"EMG\"stop", L"\"setup\"", L"", L"memo, \"quoted\"", L"name\"new") + L"\n# tail";
+        const auto expected = L"# keep\r\n" + Header +
+            L"\r\n\"A\"\"B\",\"name\"\"new\",WARN,Cat,Module,Sub,\"memo, \"\"quoted\"\"\",EMG\"\"stop,\"\"setup\"\",\"\"\n# tail";
+        const auto oldBytes = B(oldText);
+        const Encoding encodings[] = { Encoding::Utf8, Encoding::Utf8, Encoding::Cp949, Encoding::Utf16Le, Encoding::Utf16Be };
+        const bool boms[] = { false, true, false, true, true };
+        for (size_t i = 0; i < 5; ++i)
+        {
+            const auto newBytes = B(newText, encodings[i], boms[i]);
+            const auto result = CompareCsv(&oldBytes, &newBytes);
+            Check(!result.skipped && result.commonIds == 1 && result.stopCells == 0 && result.otherCells == 2,
+                "Doubled-quote IDs match standard quoted IDs");
+            Check(result.output == B(expected, encodings[i], boms[i]) && result.changes.size() == 3,
+                "Raw StopModes copied exactly across encodings; NEW non-StopModes and line endings retained");
+            for (const auto& change : result.changes) Check(change.formatOnly, "Doubled-quote spelling changes are format-only");
+            Check(ParseCsv(result.output).errors.empty(), "Merged doubled-quote fields remain valid");
+        }
+        const auto duplicate = B(oldText + L"\n" + R(L"A\"B"));
+        const auto good = B(Header + L"\n" + R(L"A\"B"));
+        const auto result = CompareCsv(&duplicate, &good);
+        Check(result.skipped && result.output == good && Has(result.diagnostics, L"Duplicate ID"),
+            "Equivalent decoded IDs still exclude an entire duplicate file");
     }
 
     void Encodings()
@@ -211,16 +283,18 @@ namespace
         auto newBytes = B(Header + L"\n" + R(L"A", L"표시"), Encoding::Cp949);
         auto result = CompareCsv(&oldBytes, &newBytes);
         Check(result.skipped && result.output == newBytes && result.changes.empty(), "Unencodable field excludes whole file");
-        Check(Has(result.diff, L"AUTOCHANGE EXCLUDED"), "Encoding exclusion documented");
+        Check(Has(result.diagnostics, L"AUTOCHANGE EXCLUDED"), "Encoding exclusion documented");
     }
 
     void FileOnlyAndEmptyData()
     {
         auto bytes = B(Header + L"\n" + R(L"A"));
         auto result = CompareCsv(nullptr, &bytes);
-        Check(result.newOnlyIds == 1 && result.output == bytes && result.newOnly, "NEW-only file preserved");
+        Check(result.newIds == 1 && result.newOnlyIds == 0 && result.newOnlyDiff.empty() &&
+            result.output == bytes && result.newOnly, "NEW-only file preserved without ID-only details");
         result = CompareCsv(&bytes, nullptr);
-        Check(result.oldOnlyIds == 1 && result.output.empty(), "OLD-only file never generated");
+        Check(result.oldIds == 1 && result.oldOnlyIds == 0 && result.oldOnlyDiff.empty() &&
+            result.output.empty(), "OLD-only file never generated or expanded into ID-only details");
         auto emptyData = B(Header + L"\r\n");
         result = CompareCsv(&emptyData, &emptyData);
         Check(!result.skipped && result.output == emptyData && result.changes.empty(), "Header-only file is valid");
@@ -263,6 +337,108 @@ namespace
         auto result = CompareCsv(&bytes, &bytes);
         Check(!result.skipped && result.output == bytes && result.changes.empty(), "Unmodified files byte-identical");
     }
+    std::wstring ReportSection(const std::wstring& report, const std::wstring& title, const std::wstring& next)
+    {
+        const auto first = report.find(title);
+        Check(first != std::wstring::npos, "Report category is present");
+        const auto start = first + title.size();
+        const auto end = report.find(next, start);
+        Check(end != std::wstring::npos, "Report categories are in the requested order");
+        return report.substr(start, end - start);
+    }
+
+    void ReportCategoriesAndOmissions()
+    {
+        const auto parent = ExecutableDirectory();
+        const auto fixture = CreateStagingDirectory(parent);
+        try
+        {
+            const auto oldDir = JoinPath(fixture, L"old"), newDir = JoinPath(fixture, L"new");
+            CreateDirectoryNew(oldDir);
+            CreateDirectoryNew(newDir);
+            auto put = [](const std::wstring& dir, const std::wstring& name, const std::wstring& rows)
+            {
+                WriteNewBytes(JoinPath(dir, name), B(Header + L"\n" + rows));
+            };
+            put(oldDir, L"Stop.csv", R(L"A", L"OLD"));
+            put(newDir, L"Stop.csv", R(L"A", L"NEW"));
+            put(oldDir, L"Other.csv", R(L"A", L"RUN", L"SETUP", L"DEF", L"old"));
+            put(newDir, L"Other.csv", R(L"A", L"RUN", L"SETUP", L"DEF", L"new"));
+            const auto idsOld = R(L"Z", L"RUN", L"SETUP", L"DEF", L"not in ID list", L"last") + L"\n" +
+                R(L"A", L"RUN", L"SETUP", L"DEF", L"not in ID list", L"first") + L"\n" + R(L"COMMON");
+            const auto idsNew = R(L"B", L"RUN", L"SETUP", L"DEF", L"not in ID list", L"second") + L"\n" + R(L"COMMON");
+            put(oldDir, L"Ids.csv", idsOld);
+            put(newDir, L"Ids.csv", idsNew);
+            put(oldDir, L"Mixed.csv", R(L"A", L"OLD", L"SETUP", L"DEF", L"old") + L"\n" + R(L"ONLY_OLD"));
+            put(newDir, L"Mixed.csv", R(L"A", L"NEW", L"SETUP", L"DEF", L"new") + L"\n" + R(L"ONLY_NEW"));
+            put(oldDir, L"OnlyOld.csv", R(L"WHOLE_OLD"));
+            put(newDir, L"OnlyNew.CSV", R(L"WHOLE_NEW"));
+            put(oldDir, L"Same.csv", R(L"SAME"));
+            put(newDir, L"Same.csv", R(L"SAME"));
+            put(oldDir, L"Format.csv", R(L"A", L" RUN ", L"SETUP", L"DEF"));
+            put(newDir, L"Format.csv", R(L"A", L"RUN", L"SETUP", L"DEF"));
+            WriteNewBytes(JoinPath(newDir, L"payload.bin"), Bytes{ 0, 255 });
+            auto comparison = CompareFolders(oldDir, newDir);
+            const auto& report = comparison.report;
+            const auto inventory = ReportSection(report, L"<알람 파일 List 차이>", L"<파일별 StopMode 차이>");
+            const auto stops = ReportSection(report, L"<파일별 StopMode 차이>", L"<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>");
+            const auto ids = ReportSection(report, L"<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>", L"<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>");
+            const auto columns = ReportSection(report, L"<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>", L"=== SUMMARY ===");
+            Check(Has(inventory, L"[Path1 ONLY]\r\n  OnlyOld.csv") && Has(inventory, L"[Path2 ONLY]\r\n  OnlyNew.CSV") &&
+                !Has(inventory, L"Stop.csv") && !Has(report, L"payload.bin"), "Only CSV file inventory is displayed");
+            Check(Has(stops, L"Stop.csv") && Has(stops, L"Mixed.csv") && !Has(stops, L"Other.csv") && !Has(stops, L"Ids.csv"),
+                "StopMode category has only files with StopMode differences");
+            Check(Has(columns, L"Other.csv") && Has(columns, L"Mixed.csv") && !Has(columns, L"Stop.csv") && !Has(columns, L"Ids.csv") &&
+                !Has(columns, L"[STOPMODE]"), "Other-column category excludes StopModes");
+            Check(Has(ids, L"Ids.csv") && Has(ids, L"Mixed.csv") && !Has(ids, L"Stop.csv") && !Has(ids, L"Other.csv") &&
+                !Has(ids, L"OnlyOld.csv") && !Has(ids, L"OnlyNew.CSV"), "ID differences use common files only");
+            Check(Has(ids, L"[Path1 ONLY ID]\r\nID=\"A\" Name=\"first\" Line=3\r\nID=\"Z\" Name=\"last\" Line=2") &&
+                Has(ids, L"[Path2 ONLY ID]\r\nID=\"B\" Name=\"second\" Line=2") && !Has(ids, L"not in ID list"),
+                "IDs are sorted per side and show only ID, Name, original Line");
+            Check(!Has(report, L"WHOLE_OLD") && !Has(report, L"WHOLE_NEW") && !Has(report, L"Same.csv") && !Has(report, L"Format.csv"),
+                "Whole-file IDs and equivalent common files are omitted");
+            Check(Has(stops, L"Path1 Line=2 Path2 Line=2") && Has(stops, L"Path1: \"OLD\"") && Has(stops, L"Path2: \"NEW\""),
+                "Cell differences identify both source lines and values");
+            Check(Has(comparison.summary, L"CSV union=8 COMMON=6 Path1_ONLY=1 Path2_ONLY=1") &&
+                Has(comparison.summary, L"Comparable IDs (common CSVs) COMMON=6 Path1_ONLY=3 Path2_ONLY=2") &&
+                Has(comparison.summary, L"Different files: StopMode=2 ID-only=2 Other columns=2"),
+                "Summary includes omitted files and counts only displayed ID differences");
+
+            put(oldDir, L"Invalid.csv", R(L"D") + L"\n" + R(L"D"));
+            put(newDir, L"Invalid.csv", R(L"D"));
+            comparison = CompareFolders(oldDir, newDir);
+            const auto details = ReportSection(comparison.report, L"<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>", L"=== 오류 및 비교 제외 내역 ===");
+            const auto errors = ReportSection(comparison.report, L"=== 오류 및 비교 제외 내역 ===", L"=== SUMMARY ===");
+            Check(!Has(details, L"Invalid.csv") && Has(errors, L"Invalid.csv") && Has(errors, L"[ERROR Path1]") &&
+                Has(errors, L"Duplicate ID") && comparison.excludedFiles == 1, "Invalid CSVs are diagnosed separately");
+
+            const auto equalOld = JoinPath(fixture, L"equal-old"), equalNew = JoinPath(fixture, L"equal-new");
+            CreateDirectoryNew(equalOld);
+            CreateDirectoryNew(equalNew);
+            put(equalOld, L"Equal.csv", R(L"E"));
+            put(equalNew, L"Equal.csv", R(L"E"));
+            comparison = CompareFolders(equalOld, equalNew);
+            const wchar_t* titles[] = { L"<알람 파일 List 차이>", L"<파일별 StopMode 차이>",
+                L"<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>", L"<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>" };
+            for (const auto* title : titles)
+                Check(Has(comparison.report, std::wstring(title) + L"\r\n차이 없음\r\n"), "Empty categories keep their title and no-difference message");
+            Check(!Has(comparison.report, L"Equal.csv") && !Has(comparison.report, L"오류 및 비교 제외"), "Clean report contains no file blocks or diagnostics");
+            put(equalOld, L"Invalid.csv", L"short");
+            put(equalNew, L"Invalid.csv", R(L"E"));
+            comparison = CompareFolders(equalOld, equalNew);
+            for (size_t i = 1; i < 4; ++i)
+                Check(Has(comparison.report, std::wstring(titles[i]) + L"\r\n비교 가능한 항목에서 차이 없음 — 오류 내역 참조\r\n"),
+                    "Uncomparable data must not look like a fully equal comparison");
+            Check(Has(comparison.report, std::wstring(titles[0]) + L"\r\n차이 없음\r\n"), "Parse failures do not invalidate a complete file inventory");
+        }
+        catch (...)
+        {
+            RemoveOwnedTree(fixture, parent);
+            throw;
+        }
+        RemoveOwnedTree(fixture, parent);
+    }
+
     void IoFailureRollback()
     {
         const auto parent = ExecutableDirectory();
@@ -282,7 +458,7 @@ namespace
             auto comparison = CompareFolders(CanonicalDirectory(oldDir), CanonicalDirectory(newDir));
             Check(comparison.canGenerate, "Fixture inventory valid");
             Check(!Has(comparison.report, L"Rules:") && !Has(comparison.report, L"[COMMON FILE]") &&
-                Has(comparison.report, L"한쪽에만 있는 파일 없음"), "Compact report with no file-only differences");
+                Has(comparison.report, L"<알람 파일 List 차이>\r\n차이 없음"), "Compact report with no file-only differences");
             bool failed = false;
             try { Generate(comparison, outDir, JoinPath(outDir, L"missing-report.txt")); }
             catch (const IoError&) { failed = true; }
@@ -352,6 +528,8 @@ int main()
         {"MissingVersusEmptyColumn", MissingVersusEmptyColumn},
         {"DuplicatesExcludeWholeFile", DuplicatesExcludeWholeFile},
         {"InvalidStructures", InvalidStructures},
+        {"DoubledQuotesInFields", DoubledQuotesInFields},
+        {"DoubledQuoteIdsAndRawMerge", DoubledQuoteIdsAndRawMerge},
         {"Encodings", Encodings},
         {"BadEncoding", BadEncoding},
         {"LossyMergeExcluded", LossyMergeExcluded},
@@ -360,6 +538,7 @@ int main()
         {"ManyUnsortedIds", ManyUnsortedIds},
         {"PathMatchingAndReportEscaping", PathMatchingAndReportEscaping},
         {"NoChangeExactBytes", NoChangeExactBytes},
+        {"ReportCategoriesAndOmissions", ReportCategoriesAndOmissions},
         {"IoFailureRollback", IoFailureRollback},
         {"ExclusiveOutputCreation", ExclusiveOutputCreation}
     };

@@ -46,16 +46,16 @@ $buildDir = Join-Path $PSScriptRoot ("build\{0}_{1}\x64\{2}" -f $Toolset, $Sdk, 
 if ($Test) {
     & (Join-Path $buildDir 'AlarmCsvMerge.Tests.exe')
     if ($LASTEXITCODE -ne 0) { throw "Core tests failed ($LASTEXITCODE). No executable was published." }
-    & (Join-Path $PSScriptRoot 'tests\Integration.ps1') -ExePath (Join-Path $buildDir 'AlarmCsvMerge.exe')
+    & (Join-Path $PSScriptRoot 'tests\Integration.ps1') -ExePath (Join-Path $buildDir 'SCTC_Alarm_Compare.exe')
 }
 if ($Toolset -eq 'v141' -and $Sdk -eq '10.0.17134.0' -and $Configuration -eq 'Release') {
     $dist = Join-Path $PSScriptRoot 'dist'
     New-Item -ItemType Directory -Force -Path $dist | Out-Null
-    Copy-Item -LiteralPath (Join-Path $buildDir 'AlarmCsvMerge.exe') -Destination (Join-Path $dist 'AlarmCsvMerge.exe') -Force
+    Copy-Item -LiteralPath (Join-Path $buildDir 'SCTC_Alarm_Compare.exe') -Destination (Join-Path $dist 'SCTC_Alarm_Compare.exe') -Force
     Write-Host ""
-    Write-Host "SUCCESS: $dist\AlarmCsvMerge.exe"
-    Write-Host 'Deploy only AlarmCsvMerge.exe. The existing SCTC_CONFIG project was not built or modified.'
+    Write-Host "SUCCESS: $dist\SCTC_Alarm_Compare.exe"
+    Write-Host 'Deploy only SCTC_Alarm_Compare.exe. The existing SCTC_CONFIG project was not built or modified.'
 } else {
-    Write-Warning "Development validation only: $buildDir\AlarmCsvMerge.exe"
+    Write-Warning "Development validation only: $buildDir\SCTC_Alarm_Compare.exe"
     Write-Warning 'The requested v141 / SDK 10.0.17134.0 release artifact was not published.'
 }

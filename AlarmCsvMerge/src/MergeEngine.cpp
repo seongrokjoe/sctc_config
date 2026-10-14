@@ -5,48 +5,68 @@
 
 namespace alarm
 {
+    namespace
+    {
+        void AppendFileDetails(std::wostringstream& out, const std::wstring& path, const std::wstring& details)
+        {
+            if (!details.empty()) out << L"\r\n--- File: " << path << L" ---\r\n" << details;
+        }
+
+        void AppendCategory(std::wostringstream& out, const wchar_t* title,
+            const std::wstring& details, bool incomplete)
+        {
+            out << L"\r\n" << title << L"\r\n";
+            if (!details.empty()) out << details;
+            else out << (incomplete ? L"비교 가능한 항목에서 차이 없음 — 오류 내역 참조\r\n" : L"차이 없음\r\n");
+        }
+    }
+
     Comparison CompareFolders(const std::wstring& oldPath, const std::wstring& newPath)
     {
         Comparison result;
         result.oldSnapshot = TakeSnapshot(oldPath);
         result.newSnapshot = TakeSnapshot(newPath);
         result.canGenerate = result.oldSnapshot.errors.empty() && result.newSnapshot.errors.empty();
-        std::wostringstream report;
-        report << L"ALARM CSV DIFF\r\n"
-            << L"Compared at: " << Timestamp() << L"\r\n"
-            << L"Path1 (OLD/Equipment): " << oldPath << L"\r\n"
-            << L"Path2 (NEW/PatchSet): " << newPath << L"\r\n\r\n";
-        for (const auto& error : result.oldSnapshot.errors) report << L"[FATAL OLD] " << error << L"\r\n";
-        for (const auto& error : result.newSnapshot.errors) report << L"[FATAL NEW] " << error << L"\r\n";
+        std::wostringstream diagnostics;
+        for (const auto& error : result.oldSnapshot.errors) diagnostics << L"[FATAL Path1] " << error << L"\r\n";
+        for (const auto& error : result.newSnapshot.errors) diagnostics << L"[FATAL Path2] " << error << L"\r\n";
         if (!result.canGenerate)
-            report << L"[INCOMPLETE INVENTORY] File-only lists below use readable files only. Generation is disabled.\r\n\r\n";
+            diagnostics << L"[INCOMPLETE INVENTORY] File-only lists use readable files only. Generation is disabled.\r\n";
+
         std::set<std::wstring, PathLess> paths;
         for (const auto& p : result.oldSnapshot.files) paths.insert(p.first);
         for (const auto& p : result.newSnapshot.files) paths.insert(p.first);
         size_t oldOnly = 0, newOnly = 0, common = 0, csvFiles = 0, unvalidated = 0;
+        size_t oldOnlyCsv = 0, newOnlyCsv = 0, commonCsv = 0;
         size_t oldIds = 0, newIds = 0, commonIds = 0, oldOnlyIds = 0, newOnlyIds = 0;
         size_t differentIds = 0, stopCells = 0, otherCells = 0;
-        report << L"=== FILE INVENTORY ===\r\n";
+        size_t stopFiles = 0, idFiles = 0, otherFiles = 0;
+        std::wostringstream oldFiles, newFiles, stopModes, onlyIds, otherColumns;
         for (const auto& path : paths)
         {
-            bool hasOld = result.oldSnapshot.files.count(path) != 0;
-            bool hasNew = result.newSnapshot.files.count(path) != 0;
-            if (!hasOld) { ++newOnly; report << L"[Path2 ONLY] " << path << L"\r\n"; }
-            else if (!hasNew) { ++oldOnly; report << L"[Path1 ONLY] " << path << L"\r\n"; }
-            else ++common;
-        }
-        if (!oldOnly && !newOnly && result.canGenerate) report << L"한쪽에만 있는 파일 없음\r\n";
-        report << L"\r\n=== CSV DETAILS ===\r\n";
-        for (const auto& path : paths)
-        {
-            if (!IsCsv(path)) continue;
-            ++csvFiles;
             auto oldEntry = result.oldSnapshot.files.find(path), newEntry = result.newSnapshot.files.find(path);
             const Bytes* oldBytes = oldEntry == result.oldSnapshot.files.end() ? nullptr : &oldEntry->second.bytes;
             const Bytes* newBytes = newEntry == result.newSnapshot.files.end() ? nullptr : &newEntry->second.bytes;
+            if (!oldBytes) ++newOnly;
+            else if (!newBytes) ++oldOnly;
+            else ++common;
+            if (!IsCsv(path)) continue;
+            ++csvFiles;
+            if (!oldBytes) { ++newOnlyCsv; newFiles << L"  " << path << L"\r\n"; }
+            else if (!newBytes) { ++oldOnlyCsv; oldFiles << L"  " << path << L"\r\n"; }
+            else ++commonCsv;
+
             PairResult pair = CompareCsv(oldBytes, newBytes);
-            if (!oldBytes || !newBytes || pair.skipped || pair.differentIds || pair.oldOnlyIds || pair.newOnlyIds)
-                report << L"\r\n--- File: " << path << L" ---\r\n" << pair.diff;
+            AppendFileDetails(stopModes, path, pair.stopModeDiff);
+            AppendFileDetails(otherColumns, path, pair.otherColumnDiff);
+            std::wstring idDetails;
+            if (!pair.oldOnlyDiff.empty()) idDetails += L"[Path1 ONLY ID]\r\n" + pair.oldOnlyDiff;
+            if (!pair.newOnlyDiff.empty()) idDetails += L"[Path2 ONLY ID]\r\n" + pair.newOnlyDiff;
+            AppendFileDetails(onlyIds, path, idDetails);
+            AppendFileDetails(diagnostics, path, pair.diagnostics);
+            if (!pair.stopModeDiff.empty()) ++stopFiles;
+            if (!idDetails.empty()) ++idFiles;
+            if (!pair.otherColumnDiff.empty()) ++otherFiles;
             if (pair.skipped)
             {
                 ++unvalidated;
@@ -62,16 +82,37 @@ namespace alarm
             otherCells += pair.otherCells;
             result.csvResults.emplace(path, std::move(pair));
         }
+
+        std::wostringstream report;
+        report << L"ALARM CSV DIFF\r\n"
+            << L"Compared at: " << Timestamp() << L"\r\n"
+            << L"Path1 (OLD/Equipment): " << oldPath << L"\r\n"
+            << L"Path2 (NEW/PatchSet): " << newPath << L"\r\n";
+        std::wstring inventory;
+        if (oldOnlyCsv) inventory += L"[Path1 ONLY]\r\n" + oldFiles.str();
+        if (newOnlyCsv) inventory += L"[Path2 ONLY]\r\n" + newFiles.str();
+        const bool incomplete = !result.canGenerate || unvalidated != 0;
+        AppendCategory(report, L"<알람 파일 List 차이>", inventory, !result.canGenerate);
+        AppendCategory(report, L"<파일별 StopMode 차이>", stopModes.str(), incomplete);
+        AppendCategory(report, L"<파일별로 Alarm ID 기준으로 한쪽에만 있는 리스트>", onlyIds.str(), incomplete);
+        AppendCategory(report, L"<파일별 Alarm ID 기준으로 컬럼별 내용이 다른 리스트>", otherColumns.str(), incomplete);
+        if (!diagnostics.str().empty()) report << L"\r\n=== 오류 및 비교 제외 내역 ===\r\n" << diagnostics.str();
+
         std::wostringstream summary;
-        summary << L"Files OLD=" << result.oldSnapshot.files.size() << L" NEW=" << result.newSnapshot.files.size()
-            << L" COMMON=" << common << L" OLD_ONLY=" << oldOnly << L" NEW_ONLY=" << newOnly << L"\r\n"
-            << L"CSV union=" << csvFiles << L" CSV errors/exclusions=" << unvalidated
-            << L" NEW files excluded from AutoChange=" << result.excludedFiles << L"\r\n"
-            << L"Parsed unique IDs OLD=" << oldIds << L" NEW=" << newIds
-            << L"; comparable COMMON=" << commonIds << L" OLD_ONLY=" << oldOnlyIds << L" NEW_ONLY=" << newOnlyIds << L"\r\n"
+        summary << L"All files Path1=" << result.oldSnapshot.files.size() << L" Path2=" << result.newSnapshot.files.size()
+            << L" COMMON=" << common << L" Path1_ONLY=" << oldOnly << L" Path2_ONLY=" << newOnly << L"\r\n"
+            << L"CSV union=" << csvFiles << L" COMMON=" << commonCsv
+            << L" Path1_ONLY=" << oldOnlyCsv << L" Path2_ONLY=" << newOnlyCsv << L"\r\n"
+            << L"CSV errors/exclusions=" << unvalidated
+            << L" Path2 files excluded from AutoChange=" << result.excludedFiles << L"\r\n"
+            << L"Parsed unique IDs (all CSVs) Path1=" << oldIds << L" Path2=" << newIds << L"\r\n"
+            << L"Comparable IDs (common CSVs) COMMON=" << commonIds
+            << L" Path1_ONLY=" << oldOnlyIds << L" Path2_ONLY=" << newOnlyIds << L"\r\n"
             << L"Different common IDs=" << differentIds << L" StopMode cells=" << stopCells
-            << L" Other cells=" << otherCells << L"\r\n";
-        if (unvalidated) summary << L"Counts exclude uncomparable rows/files; see ERROR/NOT COMPARED details.\r\n";
+            << L" Other cells=" << otherCells << L"\r\n"
+            << L"Different files: StopMode=" << stopFiles << L" ID-only=" << idFiles
+            << L" Other columns=" << otherFiles << L"\r\n";
+        if (incomplete) summary << L"Counts use readable files and parsed rows; uncomparable data is excluded from differences. See diagnostics.\r\n";
         summary << L"Generation: " << (result.canGenerate ? L"available" : L"DISABLED (incomplete input)") << L"\r\n";
         result.summary = summary.str();
         report << L"\r\n=== SUMMARY ===\r\n" << result.summary;

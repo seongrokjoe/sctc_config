@@ -71,11 +71,16 @@ namespace alarm
     struct PairResult
     {
         Bytes output;
-        std::wstring diff;
+        std::wstring stopModeDiff;
+        std::wstring oldOnlyDiff;
+        std::wstring newOnlyDiff;
+        std::wstring otherColumnDiff;
+        std::wstring diagnostics;
         std::vector<CellChange> changes;
         size_t oldIds = 0;
         size_t newIds = 0;
         size_t commonIds = 0;
+        // ID-only differences are counted only within common files.
         size_t oldOnlyIds = 0;
         size_t newOnlyIds = 0;
         size_t stopCells = 0;

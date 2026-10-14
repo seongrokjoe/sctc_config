@@ -65,6 +65,8 @@ namespace alarm
             {
                 Field field;
                 field.start = position;
+                bool quoted = false;
+                std::wstring quotedError;
                 if (position < line.size() && line[position] == L'"')
                 {
                     ++position;
@@ -81,24 +83,27 @@ namespace alarm
                         else { closed = true; break; }
                     }
                     if (!closed)
-                    {
-                        error = L"unclosed quoted field (multiline fields are not supported)";
-                        return false;
-                    }
-                    if (position < line.size() && line[position] != L',')
-                    {
-                        error = L"unexpected character after closing quote";
-                        return false;
-                    }
+                        quotedError = L"unclosed quoted field (multiline fields are not supported)";
+                    else if (position < line.size() && line[position] != L',')
+                        quotedError = L"unexpected character after closing quote";
+                    else quoted = true;
                 }
-                else
+                if (!quoted)
                 {
+                    // Prefer a complete quoted field (including an empty quoted value).
+                    // Otherwise accept doubled quotes in an unquoted field, even at its start.
+                    position = field.start;
+                    field.value.clear();
                     while (position < line.size() && line[position] != L',')
                     {
                         if (line[position] == L'"')
                         {
-                            error = L"quote inside an unquoted field";
-                            return false;
+                            if (position + 1 >= line.size() || line[position + 1] != L'"')
+                            {
+                                error = quotedError.empty() ? L"quote inside an unquoted field" : quotedError;
+                                return false;
+                            }
+                            ++position;
                         }
                         field.value += line[position++];
                     }
@@ -123,16 +128,6 @@ namespace alarm
             std::wstring result;
             for (const auto& error : csv.errors) result += L"[ERROR " + std::wstring(side) + L"] " + error + L"\r\n";
             return result;
-        }
-
-        void AppendOnlyRows(std::wostringstream& out, const Csv& csv, const wchar_t* side)
-        {
-            for (const auto& entry : csv.ids)
-            {
-                const Row& row = csv.rows[entry.second];
-                out << L"[" << side << L" ONLY ID] ID=" << Quote(row.id)
-                    << L" Line=" << row.line + 1 << L" Name=" << Quote(GetField(csv, row, 1)) << L"\r\n";
-            }
         }
     }
 
@@ -357,26 +352,18 @@ namespace alarm
         result.oldIds = oldCsv.ids.size();
         result.newIds = newCsv.ids.size();
         result.newOnly = !oldBytes;
-        std::wostringstream out;
-        if (oldBytes && oldCsv.errors.empty()) out << L"OLD encoding: " << EncodingName(oldCsv.document) << L"\r\n";
-        if (newBytes && newCsv.errors.empty()) out << L"NEW encoding: " << EncodingName(newCsv.document) << L"\r\n";
-        out << DescribeErrors(L"OLD", oldCsv) << DescribeErrors(L"NEW", newCsv);
+        std::wostringstream diagnostics, stopModeDiff, oldOnlyDiff, newOnlyDiff, otherColumnDiff;
+        diagnostics << DescribeErrors(L"Path1", oldCsv) << DescribeErrors(L"Path2", newCsv);
         if (!oldCsv.errors.empty() || !newCsv.errors.empty())
         {
             result.skipped = true;
-            out << L"[NOT COMPARED] File has validation errors; "
-                << (newBytes ? L"NEW bytes will be copied unchanged.\r\n" : L"OLD-only file is not generated.\r\n");
-            result.diff = out.str();
+            diagnostics << L"[NOT COMPARED] File has validation errors; "
+                << (newBytes ? L"Path2 bytes will be copied unchanged.\r\n" : L"Path1-only file is not generated.\r\n");
+            result.diagnostics = diagnostics.str();
             return result;
         }
-        if (!oldBytes || !newBytes)
-        {
-            AppendOnlyRows(out, oldBytes ? oldCsv : newCsv, oldBytes ? L"OLD" : L"NEW");
-            result.oldOnlyIds = oldBytes ? oldCsv.ids.size() : 0;
-            result.newOnlyIds = newBytes ? newCsv.ids.size() : 0;
-            result.diff = out.str();
-            return result;
-        }
+        // Files present on only one side belong in the file inventory, not the ID lists.
+        if (!oldBytes || !newBytes) return result;
         const size_t columnCount = (std::max)(oldCsv.headers.size(), newCsv.headers.size());
         std::set<std::wstring> ids;
         for (const auto& p : oldCsv.ids) ids.insert(p.first);
@@ -390,8 +377,9 @@ namespace alarm
                 bool oldOnly = newEntry == newCsv.ids.end();
                 const Csv& csv = oldOnly ? oldCsv : newCsv;
                 const Row& row = csv.rows[oldOnly ? oldEntry->second : newEntry->second];
-                out << (oldOnly ? L"[OLD ONLY ID]" : L"[NEW ONLY ID]") << L" ID=" << Quote(id)
-                    << L" Line=" << row.line + 1 << L" Name=" << Quote(GetField(csv, row, 1)) << L"\r\n";
+                auto& onlyDiff = oldOnly ? oldOnlyDiff : newOnlyDiff;
+                onlyDiff << L"ID=" << Quote(id) << L" Name=" << Quote(GetField(csv, row, 1))
+                    << L" Line=" << row.line + 1 << L"\r\n";
                 if (oldOnly) ++result.oldOnlyIds; else ++result.newOnlyIds;
                 continue;
             }
@@ -408,10 +396,11 @@ namespace alarm
                 bool stop = column >= 7 && column <= 9;
                 if (stop) ++result.stopCells; else ++result.otherCells;
                 different = true;
-                out << (stop ? L"[STOPMODE]" : L"[OTHER COLUMN]") << L" ID=" << Quote(id)
+                auto& diff = stop ? stopModeDiff : otherColumnDiff;
+                diff << (stop ? L"[STOPMODE]" : L"[OTHER COLUMN]") << L" ID=" << Quote(id)
                     << L" Column=" << column + 1 << L" Name=" << Quote(ColumnName(oldCsv, newCsv, column))
-                    << L" OLD line=" << oldRow.line + 1 << L" NEW line=" << newRow.line + 1 << L"\r\n  OLD: "
-                    << (hasOld ? Quote(oldValue) : L"<MISSING COLUMN>") << L"\r\n  NEW: "
+                    << L" Path1 Line=" << oldRow.line + 1 << L" Path2 Line=" << newRow.line + 1 << L"\r\n  Path1: "
+                    << (hasOld ? Quote(oldValue) : L"<MISSING COLUMN>") << L"\r\n  Path2: "
                     << (hasNew ? Quote(newValue) : L"<MISSING COLUMN>") << L"\r\n";
             }
             if (different) ++result.differentIds;
@@ -444,14 +433,14 @@ namespace alarm
             result.changes.clear();
             result.skipped = true;
             std::string message = error.what();
-            out << L"[AUTOCHANGE EXCLUDED] " << std::wstring(message.begin(), message.end())
-                << L"; NEW bytes will be copied unchanged.\r\n";
+            diagnostics << L"[AUTOCHANGE EXCLUDED] " << std::wstring(message.begin(), message.end())
+                << L"; Path2 bytes will be copied unchanged.\r\n";
         }
-        out << L"IDs OLD=" << result.oldIds << L" NEW=" << result.newIds << L" COMMON=" << result.commonIds
-            << L" OLD_ONLY=" << result.oldOnlyIds << L" NEW_ONLY=" << result.newOnlyIds
-            << L" DIFFERENT=" << result.differentIds << L"; StopMode cells=" << result.stopCells
-            << L"; Other cells=" << result.otherCells << L"\r\n";
-        result.diff = out.str();
+        result.stopModeDiff = stopModeDiff.str();
+        result.oldOnlyDiff = oldOnlyDiff.str();
+        result.newOnlyDiff = newOnlyDiff.str();
+        result.otherColumnDiff = otherColumnDiff.str();
+        result.diagnostics = diagnostics.str();
         return result;
     }
 }
