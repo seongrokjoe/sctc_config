@@ -57,6 +57,13 @@ namespace alarm
 
     std::wstring GetRawField(const Csv& csv, const Row& row, size_t column);
 
+    enum class ModeDifference { None, StopMode, TreatMode };
+
+    struct MergeOptions
+    {
+        bool includeTreatModeDifferences = false;
+    };
+
     struct CellChange
     {
         std::wstring id;
@@ -65,18 +72,18 @@ namespace alarm
         std::wstring after;
         size_t oldLine = 0;
         size_t newLine = 0;
-        bool formatOnly = false;
+        ModeDifference kind = ModeDifference::None;
     };
 
     struct PairResult
     {
-        Bytes output;
         std::wstring stopModeDiff;
+        std::wstring treatModeDiff;
+        std::wstring treatModeExample;
         std::wstring oldOnlyDiff;
         std::wstring newOnlyDiff;
         std::wstring otherColumnDiff;
         std::wstring diagnostics;
-        std::vector<CellChange> changes;
         size_t oldIds = 0;
         size_t newIds = 0;
         size_t commonIds = 0;
@@ -84,6 +91,7 @@ namespace alarm
         size_t oldOnlyIds = 0;
         size_t newOnlyIds = 0;
         size_t stopCells = 0;
+        size_t treatCells = 0;
         size_t otherCells = 0;
         size_t differentIds = 0;
         bool skipped = false;
@@ -92,4 +100,14 @@ namespace alarm
 
     // Null pointers represent absent files. All inputs remain immutable.
     PairResult CompareCsv(const Bytes* oldBytes, const Bytes* newBytes);
+
+    struct MergeResult
+    {
+        Bytes output;
+        std::vector<CellChange> changes;
+        std::wstring diagnostics;
+        bool skipped = false;
+    };
+
+    MergeResult MergeCsv(const Bytes* oldBytes, const Bytes* newBytes, const MergeOptions& options);
 }

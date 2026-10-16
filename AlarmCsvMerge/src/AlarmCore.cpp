@@ -129,6 +129,27 @@ namespace alarm
             for (const auto& error : csv.errors) result += L"[ERROR " + std::wstring(side) + L"] " + error + L"\r\n";
             return result;
         }
+
+        struct ModeParts
+        {
+            std::wstring stop;
+            std::wstring treat;
+        };
+
+        ModeParts SplitMode(const std::wstring& value)
+        {
+            const auto colon = value.find(L':');
+            if (colon == std::wstring::npos) return { Trim(value), L"" };
+            return { Trim(value.substr(0, colon)), Trim(value.substr(colon + 1)) };
+        }
+
+        ModeDifference CompareModes(const std::wstring& oldValue, const std::wstring& newValue)
+        {
+            const auto oldMode = SplitMode(oldValue), newMode = SplitMode(newValue);
+            if (oldMode.stop != newMode.stop) return ModeDifference::StopMode;
+            if (oldMode.treat != newMode.treat) return ModeDifference::TreatMode;
+            return ModeDifference::None;
+        }
     }
 
     std::wstring Trim(const std::wstring& value)
@@ -345,14 +366,13 @@ namespace alarm
     PairResult CompareCsv(const Bytes* oldBytes, const Bytes* newBytes)
     {
         PairResult result;
-        if (newBytes) result.output = *newBytes;
         Csv oldCsv, newCsv;
         if (oldBytes) oldCsv = ParseCsv(*oldBytes);
         if (newBytes) newCsv = ParseCsv(*newBytes);
         result.oldIds = oldCsv.ids.size();
         result.newIds = newCsv.ids.size();
         result.newOnly = !oldBytes;
-        std::wostringstream diagnostics, stopModeDiff, oldOnlyDiff, newOnlyDiff, otherColumnDiff;
+        std::wostringstream diagnostics, stopModeDiff, treatModeDiff, oldOnlyDiff, newOnlyDiff, otherColumnDiff;
         diagnostics << DescribeErrors(L"Path1", oldCsv) << DescribeErrors(L"Path2", newCsv);
         if (!oldCsv.errors.empty() || !newCsv.errors.empty())
         {
@@ -368,7 +388,6 @@ namespace alarm
         std::set<std::wstring> ids;
         for (const auto& p : oldCsv.ids) ids.insert(p.first);
         for (const auto& p : newCsv.ids) ids.insert(p.first);
-        Document merged = newCsv.document;
         for (const auto& id : ids)
         {
             auto oldEntry = oldCsv.ids.find(id), newEntry = newCsv.ids.find(id);
@@ -378,7 +397,8 @@ namespace alarm
                 const Csv& csv = oldOnly ? oldCsv : newCsv;
                 const Row& row = csv.rows[oldOnly ? oldEntry->second : newEntry->second];
                 auto& onlyDiff = oldOnly ? oldOnlyDiff : newOnlyDiff;
-                onlyDiff << L"ID=" << Quote(id) << L" Name=" << Quote(GetField(csv, row, 1))
+                onlyDiff << (oldOnly ? L"[EQ Only(PATH1)] " : L"[PatchSet Only(PATH2)] ")
+                    << L"ID=" << Quote(id) << L" Name=" << Quote(GetField(csv, row, 1))
                     << L" Line=" << row.line + 1 << L"\r\n";
                 if (oldOnly) ++result.oldOnlyIds; else ++result.newOnlyIds;
                 continue;
@@ -387,35 +407,91 @@ namespace alarm
             const Row& oldRow = oldCsv.rows[oldEntry->second];
             const Row& newRow = newCsv.rows[newEntry->second];
             bool different = false;
+            bool otherRowShown = false;
             for (size_t column = 1; column < columnCount; ++column)
             {
                 bool hasOld = column < oldRow.fields.size(), hasNew = column < newRow.fields.size();
                 auto oldValue = hasOld ? GetField(oldCsv, oldRow, column) : L"";
                 auto newValue = hasNew ? GetField(newCsv, newRow, column) : L"";
-                if (hasOld == hasNew && Trim(oldValue) == Trim(newValue)) continue;
                 bool stop = column >= 7 && column <= 9;
-                if (stop) ++result.stopCells; else ++result.otherCells;
+                const auto kind = stop ? CompareModes(oldValue, newValue) : ModeDifference::None;
+                if (stop ? kind == ModeDifference::None :
+                    (hasOld == hasNew && Trim(oldValue) == Trim(newValue))) continue;
+                if (kind == ModeDifference::StopMode) ++result.stopCells;
+                else if (kind == ModeDifference::TreatMode) ++result.treatCells;
+                else ++result.otherCells;
                 different = true;
-                auto& diff = stop ? stopModeDiff : otherColumnDiff;
-                diff << (stop ? L"[STOPMODE]" : L"[OTHER COLUMN]") << L" ID=" << Quote(id)
-                    << L" Column=" << column + 1 << L" Name=" << Quote(ColumnName(oldCsv, newCsv, column))
-                    << L" Path1 Line=" << oldRow.line + 1 << L" Path2 Line=" << newRow.line + 1 << L"\r\n  Path1: "
-                    << (hasOld ? Quote(oldValue) : L"<MISSING COLUMN>") << L"\r\n  Path2: "
+                auto& diff = kind == ModeDifference::StopMode ? stopModeDiff :
+                    kind == ModeDifference::TreatMode ? treatModeDiff : otherColumnDiff;
+                if (!stop && !otherRowShown)
+                {
+                    diff << L"\r\n[OTHER COLUMN] ID:" << Quote(id)
+                        << L"\r\nEQuipment(Path1) : " << oldCsv.document.lines[oldRow.line].text
+                        << L"\r\nPatchSet(Path2)  : " << newCsv.document.lines[newRow.line].text << L"\r\n\r\n";
+                    otherRowShown = true;
+                }
+                std::wostringstream cell;
+                if (stop) cell << (kind == ModeDifference::StopMode ? L"[STOPMODE]" : L"[TREATMODE]")
+                    << L" ID=" << Quote(id) << L" ";
+                cell << L"Column=" << column + 1 << L" Name=" << Quote(ColumnName(oldCsv, newCsv, column))
+                    << L" Path1 Line=" << oldRow.line + 1 << L" Path2 Line=" << newRow.line + 1
+                    << L"\r\nEQuipment(Path1) : "
+                    << (hasOld ? Quote(oldValue) : L"<MISSING COLUMN>") << L"\r\nPatchSet(Path2)  : "
                     << (hasNew ? Quote(newValue) : L"<MISSING COLUMN>") << L"\r\n";
+                diff << cell.str();
+                if (kind == ModeDifference::TreatMode && result.treatModeExample.empty())
+                    result.treatModeExample = cell.str() + L"Y 선택 시 출력 Mode : " +
+                        Quote(GetRawField(oldCsv, oldRow, column)) + L"\r\nN 선택 시 출력 Mode : " +
+                        Quote(GetRawField(newCsv, newRow, column)) + L"\r\n";
             }
             if (different) ++result.differentIds;
+        }
+        result.stopModeDiff = stopModeDiff.str();
+        result.treatModeDiff = treatModeDiff.str();
+        result.oldOnlyDiff = oldOnlyDiff.str();
+        result.newOnlyDiff = newOnlyDiff.str();
+        result.otherColumnDiff = otherColumnDiff.str();
+        result.diagnostics = diagnostics.str();
+        return result;
+    }
+
+    MergeResult MergeCsv(const Bytes* oldBytes, const Bytes* newBytes, const MergeOptions& options)
+    {
+        MergeResult result;
+        if (!newBytes) return result;
+        result.output = *newBytes;
+        const auto newCsv = ParseCsv(*newBytes);
+        const auto oldCsv = oldBytes ? ParseCsv(*oldBytes) : Csv{};
+        if (!oldCsv.errors.empty() || !newCsv.errors.empty())
+        {
+            result.skipped = true;
+            result.diagnostics = DescribeErrors(L"Path1", oldCsv) + DescribeErrors(L"Path2", newCsv);
+            return result;
+        }
+        if (!oldBytes) return result;
+        Document merged = newCsv.document;
+        for (const auto& entry : newCsv.ids)
+        {
+            const auto oldEntry = oldCsv.ids.find(entry.first);
+            if (oldEntry == oldCsv.ids.end()) continue;
+            const Row& oldRow = oldCsv.rows[oldEntry->second];
+            const Row& newRow = newCsv.rows[entry.second];
+            bool selected[3] = {};
             for (size_t column = 7; column <= 9; ++column)
             {
+                const auto kind = CompareModes(GetField(oldCsv, oldRow, column), GetField(newCsv, newRow, column));
+                if (kind == ModeDifference::None ||
+                    (kind == ModeDifference::TreatMode && !options.includeTreatModeDifferences)) continue;
+                selected[column - 7] = true;
                 auto oldValue = GetRawField(oldCsv, oldRow, column);
                 auto newValue = GetRawField(newCsv, newRow, column);
-                if (oldValue == newValue) continue;
-                result.changes.push_back({ id, StopNames[column - 7], newValue, oldValue,
-                    oldRow.line + 1, newRow.line + 1,
-                    Trim(GetField(oldCsv, oldRow, column)) == Trim(GetField(newCsv, newRow, column)) });
+                result.changes.push_back({ entry.first, StopNames[column - 7], newValue, oldValue,
+                    oldRow.line + 1, newRow.line + 1, kind });
             }
             // Replace right to left; all untouched character spans stay exactly as NEW.
             for (size_t column = 10; column-- > 7;)
             {
+                if (!selected[column - 7]) continue;
                 const auto& field = newRow.fields[column];
                 merged.lines[newRow.line].text.replace(field.start, field.length, GetRawField(oldCsv, oldRow, column));
             }
@@ -433,14 +509,9 @@ namespace alarm
             result.changes.clear();
             result.skipped = true;
             std::string message = error.what();
-            diagnostics << L"[AUTOCHANGE EXCLUDED] " << std::wstring(message.begin(), message.end())
-                << L"; Path2 bytes will be copied unchanged.\r\n";
+            result.diagnostics = L"[AUTOCHANGE EXCLUDED] " + std::wstring(message.begin(), message.end()) +
+                L"; PatchSet bytes will be copied unchanged.\r\n";
         }
-        result.stopModeDiff = stopModeDiff.str();
-        result.oldOnlyDiff = oldOnlyDiff.str();
-        result.newOnlyDiff = newOnlyDiff.str();
-        result.otherColumnDiff = otherColumnDiff.str();
-        result.diagnostics = diagnostics.str();
         return result;
     }
 }

@@ -58,6 +58,20 @@ namespace
         }
     }
 
+    bool ReadYesNo(const wchar_t* prompt)
+    {
+        for (;;)
+        {
+            std::wcout << prompt << std::flush;
+            std::wstring answer;
+            if (!ReadLine(answer)) return false;
+            answer = alarm::Trim(answer);
+            if (answer == L"Y" || answer == L"y") return true;
+            if (answer == L"N" || answer == L"n") return false;
+            std::wcout << L"Y 또는 N을 입력해주세요.\n";
+        }
+    }
+
     int Finish(int code)
     {
         if (interactiveInput)
@@ -92,29 +106,28 @@ int wmain()
             std::wcerr << L"입력 전체를 읽지 못해 AutoChange를 수행할 수 없습니다. 보고서를 확인해주세요.\n";
             return Finish(1);
         }
-        bool yes = false;
-        for (;;)
-        {
-            std::wcout << L"\nAutoChange? [Y/N]: " << std::flush;
-            std::wstring answer;
-            if (!ReadLine(answer)) break;
-            answer = alarm::Trim(answer);
-            if (answer == L"Y" || answer == L"y") { yes = true; break; }
-            if (answer == L"N" || answer == L"n") break;
-            std::wcout << L"Y 또는 N을 입력해주세요.\n";
-        }
-        if (!yes)
+        if (!ReadYesNo(L"\nAutoChange? [Y/N]: "))
         {
             alarm::AppendReport(reportPath, L"\r\n[AUTOCHANGE NOT REQUESTED]\r\n");
             std::wcout << L"Diff 보고서 저장 완료. 결과 폴더를 생성하지 않았습니다.\n";
             return Finish(comparison.excludedFiles ? 2 : 0);
         }
+        std::wcout << L"\nStopMode 동일 / TreatMode 차이 대상 " << comparison.treatCells << L"건\n";
+        if (!comparison.treatModeExample.empty())
+            std::wcout << comparison.treatModeExample;
+        else
+            std::wcout << L"설명용 예제 (실제 변경 대상 아님):\n"
+                << L"EQuipment(Path1) : Ignore:0\nPatchSet(Path2)  : Ignore:4|5|6\n"
+                << L"Y 선택 시 출력 Mode : Ignore:0\nN 선택 시 출력 Mode : Ignore:4|5|6\n";
+        alarm::MergeOptions options;
+        options.includeTreatModeDifferences = ReadYesNo(
+            L"\nStopMode가 같은데 TreatMode가 다른 경우도 EQuipment의 내용을 PatchSet에 적용할까요? [Y/N]: ");
         std::wcout << L"\n새 Alarm 폴더 생성 및 검증 중...\n" << std::flush;
-        auto generated = alarm::Generate(comparison, exeDirectory, reportPath);
+        auto generated = alarm::Generate(comparison, exeDirectory, reportPath, options);
         std::wcout << L"\n생성 완료\n" << generated.summary << L"보고서: " << reportPath << L"\n";
-        if (comparison.excludedFiles)
+        if (generated.excludedFiles)
             std::wcout << L"일부 CSV는 오류로 자동변경에서 제외되어 Path2 그대로 복사되었습니다. 보고서를 확인해주세요.\n";
-        return Finish(comparison.excludedFiles ? 2 : 0);
+        return Finish(generated.excludedFiles ? 2 : 0);
     }
     catch (const std::exception& error)
     {
