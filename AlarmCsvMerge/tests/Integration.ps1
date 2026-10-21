@@ -336,7 +336,7 @@ try {
         Assert-True ((Get-FileHash -LiteralPath "$alignOutput\$name").Hash -eq (Get-FileHash -LiteralPath "$alignInput\$name").Hash) "Sort must preserve original bytes: $name"
     }
     Assert-True (Test-Path -LiteralPath "$alignOutput\empty" -PathType Container) 'Sort must preserve empty directories.'
-    Assert-True ($response.Out.Contains('CSV 파일=6 정렬=2 미변경=2 제외(원문 복사)=2 비CSV 복사=1') -and $response.Out.Contains('Duplicate.csv') -and $response.Out.Contains('Duplicate ID') -and $response.Out.Contains('Malformed.csv')) 'Sort must report actual counts and per-file reasons.'
+    Assert-True ($response.Out.Contains('CSV 파일=6 정렬=2 미변경=4 제외(원문 복사)=0 비CSV 복사=1 행 제외=3') -and $response.Out.Contains('Duplicate.csv') -and $response.Out.Contains('Duplicate ID') -and $response.Out.Contains('Malformed.csv')) 'Sort must report actual counts and row exclusion reasons.'
     Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Filter 'AlarmDiff_*.txt').Count -eq 0) 'Sort does not create a comparison report.'
     Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Sort changed source bytes or folder structure.'
     Passed 'Sort: numeric order, comment blocks, recursive copy, original bytes and exclusions'
@@ -352,9 +352,9 @@ try {
     Assert-True ($response.Code -eq 0 -and $response.Out.Contains('알람 CSV 파일이 없습니다') -and !(Test-Path -LiteralPath "$alignTools\Sort_no-csv")) 'No CSV means no output folder and normal completion.'
     $cleanAlign = Join-Path $fixture 'clean-align'
     New-Item -ItemType Directory -Path $cleanAlign | Out-Null
-    Put-Text "$cleanAlign\Clean.csv" ($header + $lf + (Row '10') + $lf + (Row '2'))
+    Put-Text "$cleanAlign\Clean.csv" ($header + $lf + (Row '0') + $lf + (Row '10') + $lf + (Row '2'))
     $response = Invoke-Console $alignExe ('2' + $lf + $cleanAlign + $lf)
-    Assert-True ($response.Code -eq 0 -and [IO.File]::ReadAllText("$alignTools\Sort_clean-align\Clean.csv") -ceq ($header + $lf + (Row '2') + $lf + (Row '10'))) 'Valid Sort must exit successfully.'
+    Assert-True ($response.Code -eq 0 -and [IO.File]::ReadAllText("$alignTools\Sort_clean-align\Clean.csv") -ceq ($header + $lf + (Row '0') + $lf + (Row '2') + $lf + (Row '10'))) 'Valid Sort must preserve ID 0 on line 2 and exit successfully.'
     Passed 'Sort: repeated results, no CSV and clean completion'
 
     $alignOutputsBeforeFailure = Tree-Hash $alignTools
@@ -368,6 +368,30 @@ try {
     Assert-True ((Tree-Hash $alignTools) -ceq $alignOutputsBeforeFailure) 'Failed Sort must not leave output or modify existing results.'
     Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Sort failure changed its input.'
     Passed 'Sort: menu/path validation, read failure and containment protection'
+
+    $partialInput = Join-Path $fixture '부분 정렬'
+    New-Item -ItemType Directory -Path "$partialInput\sub" | Out-Null
+    $damagedZero = '0,name,WARN,Cat,Module,Sub,"닫히지 않은 따옴표,RUN,SETUP,DEF'
+    $damagedQuote = '7,name,WARN,Cat,Module,Sub,bad"quote,RUN,SETUP,DEF'
+    $damagedId = '"9,name,WARN,Cat,Module,Sub,message,RUN,SETUP,DEF'
+    $partialLines = @($header, $damagedZero, (Row '10'), '# keep', $damagedQuote, '', (Row '2'),
+        '8,short', $damagedId, (Row ''), (Row '5'), (Row ' 5 '), '# footer')
+    $partialExpected = @($header, $damagedZero, (Row '2'), '# keep', $damagedQuote, '', (Row '10'),
+        '8,short', $damagedId, (Row ''), (Row '5'), (Row ' 5 '), '# footer') -join $crlf
+    Put-Text "$partialInput\sub\Damaged.csv" ($partialLines -join $crlf)
+    Put-Text "$partialInput\BadHeader.csv" 'few,columns'
+    $partialBefore = Tree-Hash $partialInput
+    $response = Invoke-Console $alignExe ('2' + $lf + $partialInput + $lf)
+    $partialOutput = Join-Path $alignTools 'Sort_부분 정렬'
+    Assert-True ($response.Code -eq 2 -and [IO.File]::ReadAllText("$partialOutput\sub\Damaged.csv") -ceq $partialExpected) 'Sort must retain damaged rows, zero, comments and blanks in place while sorting the valid rows.'
+    Assert-True ($response.Out.Contains('Damaged.csv') -and $response.Out.Contains('원본 라인: 2 | 알람 번호: "0"') -and
+        $response.Out.Contains('원본 라인: 5 | 알람 번호: "7"') -and $response.Out.Contains('원본 라인: 8 | 알람 번호: "8"') -and
+        $response.Out.Contains('원본 라인: 9 | 알람 번호: 판독 불가') -and $response.Out.Contains('원본 라인: 10 | 알람 번호: (비어 있음)') -and
+        $response.Out.Contains('원문: ' + $damagedZero) -and $response.Out.Contains('원문: ' + $damagedQuote)) 'Console must identify the source file, original line, alarm ID and raw text of excluded rows.'
+    Assert-True ($response.Out.Contains('CSV 파일=2 정렬=1 미변경=0 제외(원문 복사)=1 비CSV 복사=0 행 제외=7')) 'Partial row exclusion must be counted separately from file exclusion.'
+    Assert-True ((Get-FileHash -LiteralPath "$partialInput\BadHeader.csv").Hash -eq (Get-FileHash -LiteralPath "$partialOutput\BadHeader.csv").Hash) 'Invalid headers must still exclude the whole file without data loss.'
+    Assert-True ((Tree-Hash $partialInput) -ceq $partialBefore) 'Partial sorting must leave all original files unchanged.'
+    Passed 'Sort: malformed rows, zero preservation, partial sorting and source line diagnostics'
 
     Assert-True (@(Get-ChildItem -LiteralPath $fixture -Recurse -Directory -Filter 'Alarm.pending_*').Count -eq 0) 'Temporary output leaked.'
     Write-Host "$passed integration scenarios passed."

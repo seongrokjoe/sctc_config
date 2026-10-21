@@ -43,6 +43,18 @@ namespace alarm
                 if (csv)
                 {
                     aligned = AlignCsv(file.bytes);
+                    result.excludedRows += aligned.excludedRows.size();
+                    for (const auto& issue : aligned.excludedRows)
+                    {
+                        details << L"\r\n[행 정렬 제외] 파일: " << Quote(file.relative)
+                            << L" | 원본 라인: " << issue.line + 1 << L" | 알람 번호: ";
+                        if (issue.idReadable)
+                            details << (issue.id.empty() ? L"(비어 있음)" : Quote(issue.id));
+                        else
+                            details << L"판독 불가 (첫 필드 원문: "
+                                << Quote(issue.text.substr(0, issue.text.find(L','))) << L")";
+                        details << L"\r\n  사유: " << issue.reason << L"\r\n  원문: " << issue.text << L"\r\n";
+                    }
                     if (aligned.skipped)
                     {
                         ++result.excludedFiles;
@@ -63,7 +75,7 @@ namespace alarm
             summary << L"출력 경로: " << result.directory << L"\r\n"
                 << L"CSV 파일=" << result.csvFiles << L" 정렬=" << result.sortedFiles
                 << L" 미변경=" << result.unchangedFiles << L" 제외(원문 복사)=" << result.excludedFiles
-                << L" 비CSV 복사=" << nonCsv << L"\r\n" << details.str();
+                << L" 비CSV 복사=" << nonCsv << L" 행 제외=" << result.excludedRows << L"\r\n" << details.str();
             result.summary = summary.str();
             owned.clear();
             return result;

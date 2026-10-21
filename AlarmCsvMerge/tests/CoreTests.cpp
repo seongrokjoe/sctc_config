@@ -717,17 +717,26 @@ namespace
     {
         const std::vector<Bytes> invalid = {
             B(L""), B(L"# comment only"), B(L"few,columns"),
-            B(Header + L"\nshort,row"),
-            B(Header + L"\n" + R(L"2") + L"\n" + R(L" 2 ")),
-            B(Header + L"\n" + R(L"")),
-            B(Header + L"\n2,name,WARN,Cat,Module,Sub,\"bad quote,RUN,SETUP,DEF"),
+            B(L"\"invalid header"),
             Bytes{ 0xef, 0xbb, 0xbf, 0xff }
         };
         for (const auto& bytes : invalid)
         {
             const auto result = AlignCsv(bytes);
             Check(result.skipped && !result.changed && result.output == bytes && !result.diagnostics.empty(),
-                "Invalid CSV is retained byte-for-byte with a reason");
+                "Unusable file structure or encoding is retained byte-for-byte with a reason");
+        }
+        const std::vector<Bytes> invalidRows = {
+            B(Header + L"\nshort,row"),
+            B(Header + L"\n" + R(L"2") + L"\n" + R(L" 2 ")),
+            B(Header + L"\n" + R(L"")),
+            B(Header + L"\n2,name,WARN,Cat,Module,Sub,\"bad quote,RUN,SETUP,DEF")
+        };
+        for (const auto& bytes : invalidRows)
+        {
+            const auto result = AlignCsv(bytes);
+            Check(!result.skipped && !result.changed && result.output == bytes && !result.excludedRows.empty(),
+                "Invalid data rows are retained with row diagnostics even if no sortable rows remain");
         }
         const std::vector<std::wstring> unchanged = {
             L"# preamble\n" + Header + L"\r\n\n# footer",
@@ -746,6 +755,100 @@ namespace
         const auto result = AlignCsv(boundary);
         Check(result.skipped && !result.changed && result.output == boundary && !result.diagnostics.empty(),
             "Sorting excludes a file if mixed line endings would consume a blank line");
+    }
+
+    void SortZeroIds()
+    {
+        const std::vector<std::wstring> zeros = {
+            R(L"0"), L"\"0\",name,WARN,Cat,Module,Sub,\"zero, alarm\",Ignore:0,,",
+            R(L" 0 "), R(L"000")
+        };
+        for (const auto& zero : zeros)
+        {
+            for (size_t zeroPosition = 0; zeroPosition < 3; ++zeroPosition)
+            {
+                std::vector<std::wstring> rows = { R(L"10"), R(L"2") };
+                rows.insert(rows.begin() + zeroPosition, zero);
+                const auto bytes = B(Header + L"\n" + rows[0] + L"\n" + rows[1] + L"\n" + rows[2]);
+                const auto expected = B(Header + L"\n" + zero + L"\n" + R(L"2") + L"\n" + R(L"10"));
+                const auto result = AlignCsv(bytes);
+                Check(!result.skipped && result.excludedRows.empty() && result.rows == 3 && result.output == expected,
+                    "ID 0 is preserved in every position, including the second physical line after the header");
+                const auto again = AlignCsv(result.output);
+                Check(!again.changed && again.rows == 3 && again.output == expected, "Zero survives repeated sorting");
+            }
+        }
+        const auto single = B(Header + L"\n" + R(L"0"));
+        const auto result = AlignCsv(single);
+        Check(!result.skipped && result.rows == 1 && result.output == single, "A single zero alarm is preserved");
+    }
+
+    void SortDamagedRows()
+    {
+        const std::vector<std::wstring> lines = {
+            Header,
+            L"90,name,WARN,Cat,Module,Sub,\"닫히지 않은 따옴표,RUN,SETUP,DEF",
+            L"# ten", R(L"10"),
+            L"91,name,WARN,Cat,Module,Sub,bad\"quote,RUN,SETUP,DEF",
+            L"", R(L"2"),
+            L"\"92,name,WARN,Cat,Module,Sub,message,RUN,SETUP,DEF",
+            L"93,short", R(L""), R(L"7"), R(L" 7 "),
+            L"# zero", R(L"0"),
+            L"94,name,WARN,Cat,Module,Sub,\"closed\"garbage,RUN,SETUP,DEF",
+            L"# footer"
+        };
+        const size_t excluded[] = { 1, 4, 7, 8, 9, 10, 11, 14 };
+        const Encoding encodings[] = { Encoding::Utf8, Encoding::Utf8, Encoding::Cp949, Encoding::Utf16Le, Encoding::Utf16Be };
+        const bool boms[] = { false, true, false, true, true };
+        for (size_t e = 0; e < 5; ++e)
+        {
+            for (bool finalNewline : { false, true })
+            {
+                Document original;
+                original.encoding = encodings[e];
+                original.bom = boms[e];
+                for (size_t i = 0; i < lines.size(); ++i)
+                    original.lines.push_back({ lines[i], i % 3 == 0 ? L"\r\n" : i % 3 == 1 ? L"\n" : L"\r" });
+                if (!finalNewline) original.lines.back().ending.clear();
+                auto expected = original;
+                expected.lines[3].text = lines[13];
+                expected.lines[13].text = lines[3];
+                const auto bytes = EncodeDocument(original);
+                const auto result = AlignCsv(bytes);
+                Check(!result.skipped && result.changed && result.rows == 3 && result.output == EncodeDocument(expected),
+                    "Valid rows sort across malformed rows without changing any excluded row, comment or line ending");
+                Check(result.excludedRows.size() == 8, "Every invalid row is reported, including all duplicate occurrences");
+                for (size_t i = 0; i < result.excludedRows.size(); ++i)
+                    Check(result.excludedRows[i].line == excluded[i] &&
+                        result.excludedRows[i].text == lines[excluded[i]] && !result.excludedRows[i].reason.empty(),
+                        "Exclusions retain original line numbers, reasons and full raw text");
+                Check(result.excludedRows[0].idReadable && result.excludedRows[0].id == L"90" &&
+                    !result.excludedRows[2].idReadable && result.excludedRows[4].idReadable &&
+                    result.excludedRows[4].id.empty(), "Readable, malformed and empty IDs remain distinguishable");
+                const auto again = AlignCsv(result.output);
+                Check(!again.skipped && !again.changed && again.output == result.output && again.excludedRows.size() == 8,
+                    "Partial sorting is idempotent and continues to report retained errors");
+                const auto compared = CompareAndMerge(&bytes, &bytes);
+                Check(compared.skipped && compared.output == bytes, "Compare still rejects the damaged file as a whole");
+            }
+        }
+        const auto duplicateZero = B(Header + L"\n" + R(L"10") + L"\n" + R(L"0") +
+            L"\n" + R(L"2") + L"\n" + R(L" 0 "));
+        const auto result = AlignCsv(duplicateZero);
+        Check(!result.skipped && result.excludedRows.size() == 2 &&
+            result.output == B(Header + L"\n" + R(L"2") + L"\n" + R(L"0") + L"\n" + R(L"10") + L"\n" + R(L" 0 ")),
+            "Duplicate zero IDs are retained in place while unrelated valid IDs sort");
+    }
+
+    void SortDamagedZeroRow()
+    {
+        const auto bad = L"0,name,WARN,Cat,Module,Sub,\"unclosed,RUN,SETUP,DEF";
+        const auto bytes = B(Header + L"\n" + bad + L"\n" + R(L"10") + L"\n" + R(L"2"));
+        const auto result = AlignCsv(bytes);
+        Check(!result.skipped && result.changed && result.excludedRows.size() == 1 &&
+            result.excludedRows[0].line == 1 && result.excludedRows[0].id == L"0" &&
+            result.output == B(Header + L"\n" + bad + L"\n" + R(L"2") + L"\n" + R(L"10")),
+            "A malformed zero alarm on line 2 is retained and reported while other rows sort");
     }
 
     void AlignFailureRollback()
@@ -844,6 +947,9 @@ int main()
         {"SortNumericRows", AlignNumericRows},
         {"SortBlocksAndEncodings", AlignBlocksAndEncodings},
         {"SortInvalidAndUnchangedFiles", AlignInvalidAndUnchangedFiles},
+        {"SortZeroIds", SortZeroIds},
+        {"SortDamagedRows", SortDamagedRows},
+        {"SortDamagedZeroRow", SortDamagedZeroRow},
         {"SortFailureRollback", AlignFailureRollback},
         {"ExclusiveOutputCreation", ExclusiveOutputCreation}
     };

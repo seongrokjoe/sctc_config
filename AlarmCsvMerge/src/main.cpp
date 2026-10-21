@@ -120,7 +120,7 @@ int wmain()
             const auto aligned = alarm::AlignFolder(inputPath, exeDirectory);
             if (!aligned.directory.empty()) std::wcout << L"\nSort 완료\n";
             std::wcout << aligned.summary;
-            return Finish(aligned.excludedFiles ? 2 : 0);
+            return Finish(aligned.excludedFiles || aligned.excludedRows ? 2 : 0);
         }
         std::wcout << L"\nCompare - Alarm CSV 비교 및 StopMode 적용\n"
             << L"Path1 = OLD/Equipment, Path2 = NEW/PatchSet\n"

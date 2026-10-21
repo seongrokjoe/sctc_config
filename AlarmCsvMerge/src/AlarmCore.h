@@ -112,10 +112,20 @@ namespace alarm
 
     MergeResult MergeCsv(const Bytes* oldBytes, const Bytes* newBytes, const MergeOptions& options);
 
+    struct SortRowIssue
+    {
+        size_t line = 0; // Zero-based source line.
+        std::wstring id;
+        bool idReadable = false;
+        std::wstring reason;
+        std::wstring text;
+    };
+
     struct AlignCsvResult
     {
         Bytes output;
         std::wstring diagnostics;
+        std::vector<SortRowIssue> excludedRows;
         size_t rows = 0;
         bool changed = false;
         bool skipped = false;
