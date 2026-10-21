@@ -661,10 +661,10 @@ namespace
         const auto bytes = B(input), before = bytes;
         const auto result = AlignCsv(bytes);
         Check(!result.skipped && result.changed && result.rows == ids.size() && result.output == B(expected),
-            "Align uses numeric order, stable equal numeric keys, unbounded numbers and trailing text IDs");
-        Check(bytes == before, "Align never changes source bytes");
+            "Sort uses numeric order, stable equal numeric keys, unbounded numbers and trailing text IDs");
+        Check(bytes == before, "Sort never changes source bytes");
         const auto again = AlignCsv(result.output);
-        Check(!again.skipped && !again.changed && again.output == result.output, "Alignment is idempotent");
+        Check(!again.skipped && !again.changed && again.output == result.output, "Sorting is idempotent");
     }
 
     void AlignBlocksAndEncodings()
@@ -700,12 +700,12 @@ namespace
                     const auto bytes = EncodeDocument(original);
                     const auto result = AlignCsv(bytes);
                     Check(!result.skipped && result.changed && result.output == EncodeDocument(expected),
-                        "Align moves preceding comments/blanks with raw rows, preserving prefix/footer and positional endings");
+                        "Sort moves preceding comments/blanks with raw rows, preserving prefix/footer and positional endings");
                     const auto parsed = ParseCsv(result.output);
                     Check(parsed.errors.empty() && parsed.headerLine == 2 && parsed.rows.size() == 3 &&
                         parsed.rows[0].id == L"1" && parsed.rows[1].id == L"2" && parsed.rows[2].id == L"10" &&
                         parsed.document.encoding == encodings[e] && parsed.document.bom == boms[e],
-                        "Aligned CSV retains encoding, BOM, header and numeric IDs");
+                        "Sorted CSV retains encoding, BOM, header and numeric IDs");
                     Check(parsed.document.lines[parsed.rows[2].line].text == text[5],
                         "Quoted IDs, trailing empty fields and all raw formatting remain exact");
                 }
@@ -745,7 +745,7 @@ namespace
         const auto boundary = B(Header + L"\r" + R(L"2") + L"\n\n" + R(L"1"));
         const auto result = AlignCsv(boundary);
         Check(result.skipped && !result.changed && result.output == boundary && !result.diagnostics.empty(),
-            "Alignment excludes a file if mixed line endings would consume a blank line");
+            "Sorting excludes a file if mixed line endings would consume a blank line");
     }
 
     void AlignFailureRollback()
@@ -754,7 +754,7 @@ namespace
         const auto fixture = CreateStagingDirectory(parent);
         try
         {
-            const auto input = JoinPath(fixture, std::wstring(250, L'x'));
+            const auto input = JoinPath(fixture, std::wstring(251, L'x'));
             const auto output = JoinPath(fixture, L"out");
             CreateDirectoryNew(input);
             CreateDirectoryNew(output);
@@ -763,16 +763,16 @@ namespace
             bool failed = false;
             try { AlignFolder(input, input); }
             catch (const IoError&) { failed = true; }
-            Check(failed, "Align engine rejects output inside input");
+            Check(failed, "Sort engine rejects output inside input");
             failed = false;
-            // The input basename is valid, but adding Align_ exceeds the volume's
+            // The input basename is valid, but adding Sort_ exceeds the volume's
             // 255-character component limit, failing publication after staging.
             try { AlignFolder(input, output); }
             catch (const IoError&) { failed = true; }
-            Check(failed, "Align publication failure is surfaced");
+            Check(failed, "Sort publication failure is surfaced");
             const auto remaining = TakeSnapshot(output);
             Check(remaining.errors.empty() && remaining.files.empty() && remaining.directories.empty(),
-                "Failed Align removes its own staged output");
+                "Failed Sort removes its own staged output");
             Check(ReadBytes(JoinPath(input, L"Alarm.csv")) == bytes, "Failure preserves original input");
         }
         catch (...) { RemoveOwnedTree(fixture, parent); throw; }
@@ -841,10 +841,10 @@ int main()
         {"SelectedEncodingExclusionAndReport", SelectedEncodingExclusionAndReport},
         {"ReportCategoriesAndOmissions", ReportCategoriesAndOmissions},
         {"IoFailureRollback", IoFailureRollback},
-        {"AlignNumericRows", AlignNumericRows},
-        {"AlignBlocksAndEncodings", AlignBlocksAndEncodings},
-        {"AlignInvalidAndUnchangedFiles", AlignInvalidAndUnchangedFiles},
-        {"AlignFailureRollback", AlignFailureRollback},
+        {"SortNumericRows", AlignNumericRows},
+        {"SortBlocksAndEncodings", AlignBlocksAndEncodings},
+        {"SortInvalidAndUnchangedFiles", AlignInvalidAndUnchangedFiles},
+        {"SortFailureRollback", AlignFailureRollback},
         {"ExclusiveOutputCreation", ExclusiveOutputCreation}
     };
     size_t failed = 0;

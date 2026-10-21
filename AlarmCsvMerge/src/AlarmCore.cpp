@@ -544,7 +544,7 @@ namespace alarm
         if (!csv.errors.empty())
         {
             result.skipped = true;
-            result.diagnostics = DescribeErrors(L"Align", csv);
+            result.diagnostics = DescribeErrors(L"Sort", csv);
             return result;
         }
         std::vector<size_t> order;
@@ -572,16 +572,16 @@ namespace alarm
             const auto check = ParseCsv(output);
             if (!check.errors.empty() || check.rows.size() != csv.rows.size() ||
                 check.document.lines.size() != aligned.lines.size())
-                throw Error("Aligned CSV failed validation; original bytes retained");
+                throw Error("Sorted CSV failed validation; original bytes retained");
             // In particular, a moved empty line must not join a CR and LF into
             // one line ending. Reject that file rather than lose a blank line.
             for (size_t i = 0; i < aligned.lines.size(); ++i)
                 if (check.document.lines[i].text != aligned.lines[i].text ||
                     check.document.lines[i].ending != aligned.lines[i].ending)
-                    throw Error("Aligned line boundaries changed; original bytes retained");
+                    throw Error("Sorted line boundaries changed; original bytes retained");
             for (size_t i = 0; i < order.size(); ++i)
                 if (check.document.lines[check.rows[i].line].text != csv.document.lines[csv.rows[order[i]].line].text)
-                    throw Error("Aligned alarm row changed; original bytes retained");
+                    throw Error("Sorted alarm row changed; original bytes retained");
             result.changed = output != bytes;
             result.output = std::move(output);
         }
@@ -589,7 +589,7 @@ namespace alarm
         {
             result.skipped = true;
             std::string message = error.what();
-            result.diagnostics = L"[ALIGN EXCLUDED] " + std::wstring(message.begin(), message.end()) + L"\r\n";
+            result.diagnostics = L"[SORT EXCLUDED] " + std::wstring(message.begin(), message.end()) + L"\r\n";
         }
         return result;
     }

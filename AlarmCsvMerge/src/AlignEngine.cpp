@@ -13,7 +13,7 @@ namespace alarm
         const auto snapshot = TakeSnapshot(input);
         if (!snapshot.errors.empty())
         {
-            std::wstring errors = L"입력 전체를 읽지 못해 Align을 수행할 수 없습니다.\r\n";
+            std::wstring errors = L"입력 전체를 읽지 못해 Sort를 수행할 수 없습니다.\r\n";
             for (const auto& error : snapshot.errors) errors += error + L"\r\n";
             throw IoError(errors);
         }
@@ -57,7 +57,7 @@ namespace alarm
                 WriteNewBytes(path, bytes);
                 if (ReadBytes(path) != bytes) throw IoError(L"Output read-back mismatch: " + path);
             }
-            owned = PublishDirectory(owned, parent, L"Align_" + folderName);
+            owned = PublishDirectory(owned, parent, L"Sort_" + folderName);
             result.directory = owned;
             std::wostringstream summary;
             summary << L"출력 경로: " << result.directory << L"\r\n"

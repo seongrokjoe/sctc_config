@@ -87,7 +87,7 @@ namespace
 
     int ReadMode()
     {
-        std::wcout << L"1: Compare\n2: Align\n";
+        std::wcout << L"1: Compare\n2: Sort\n";
         for (;;)
         {
             std::wcout << L"선택 [1/2]: " << std::flush;
@@ -106,19 +106,19 @@ int wmain()
     ConfigureConsole();
     try
     {
-        std::wcout << L"AlarmCsvMerge - Alarm CSV Compare / Align\n\n";
+        std::wcout << L"AlarmCsvMerge - Alarm CSV Compare / Sort\n\n";
         const auto mode = ReadMode();
         if (!mode) return Finish(1);
         const auto exeDirectory = alarm::ExecutableDirectory();
         if (mode == 2)
         {
-            std::wcout << L"\nAlign - AlarmID 숫자 기준 오름차순 정렬\n"
-                << L"결과는 exe 옆 Align_ 폴더에 저장합니다.\n\n";
+            std::wcout << L"\nSort - AlarmID 숫자 기준 오름차순 정렬\n"
+                << L"결과는 exe 옆 Sort_ 폴더에 저장합니다.\n\n";
             std::wstring inputPath;
-            if (!ReadFolder(L"Alarm Folder Path (Align): ", exeDirectory, inputPath)) return Finish(1);
+            if (!ReadFolder(L"Alarm Folder Path (Sort): ", exeDirectory, inputPath)) return Finish(1);
             std::wcout << L"\nCSV 검증 및 정렬 중...\n" << std::flush;
             const auto aligned = alarm::AlignFolder(inputPath, exeDirectory);
-            if (!aligned.directory.empty()) std::wcout << L"\nAlign 완료\n";
+            if (!aligned.directory.empty()) std::wcout << L"\nSort 완료\n";
             std::wcout << aligned.summary;
             return Finish(aligned.excludedFiles ? 2 : 0);
         }

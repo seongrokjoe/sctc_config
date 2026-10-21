@@ -325,37 +325,37 @@ try {
     [IO.File]::WriteAllBytes("$alignInput\payload.bin", [byte[]](0, 255, 129, 13, 10))
     $alignBefore = Tree-Hash $alignInput
     $response = Invoke-Console $alignExe ('invalid' + $lf + ' 2 ' + $lf + '"' + $alignInput + '"' + $lf)
-    Assert-True ($response.Code -eq 2) "Align exit code: $($response.Code) $($response.Err)"
-    Assert-True ($response.Out.Contains('1: Compare') -and $response.Out.Contains('2: Align') -and $response.Out.Contains('1 또는 2')) 'Startup menu must validate mode selection.'
-    Assert-True ($response.Out.IndexOf('선택 [1/2]') -lt $response.Out.IndexOf('Alarm Folder Path (Align)')) 'Menu must precede path input.'
-    Assert-True (!$response.Out.Contains('Alarm Folder Path2') -and !$response.Out.Contains('AutoChange?') -and !$response.Out.Contains('적용할까요?')) 'Align accepts one path without Compare prompts.'
-    $alignOutput = Join-Path $alignTools 'Align_정렬 대상'
-    Assert-True ([IO.File]::ReadAllText("$alignOutput\Main.csv") -ceq $alignExpected) 'Align must move comments and blanks with the following alarm row, retaining prefix and footer.'
+    Assert-True ($response.Code -eq 2) "Sort exit code: $($response.Code) $($response.Err)"
+    Assert-True ($response.Out.Contains('1: Compare') -and $response.Out.Contains('2: Sort') -and $response.Out.Contains('1 또는 2')) 'Startup menu must validate mode selection.'
+    Assert-True ($response.Out.IndexOf('선택 [1/2]') -lt $response.Out.IndexOf('Alarm Folder Path (Sort)')) 'Menu must precede path input.'
+    Assert-True (!$response.Out.Contains('Alarm Folder Path2') -and !$response.Out.Contains('AutoChange?') -and !$response.Out.Contains('적용할까요?')) 'Sort accepts one path without Compare prompts.'
+    $alignOutput = Join-Path $alignTools 'Sort_정렬 대상'
+    Assert-True ([IO.File]::ReadAllText("$alignOutput\Main.csv") -ceq $alignExpected) 'Sort must move comments and blanks with the following alarm row, retaining prefix and footer.'
     Assert-True ([IO.File]::ReadAllText("$alignOutput\sub\Main.CSV") -ceq ($header + $crlf + (Row '2') + $crlf + (Row '100'))) 'Nested CSV must retain filename, path, CRLF and no final newline.'
     foreach ($name in @('Sorted.csv', 'Empty.csv', 'Duplicate.csv', 'Malformed.csv', 'payload.bin')) {
-        Assert-True ((Get-FileHash -LiteralPath "$alignOutput\$name").Hash -eq (Get-FileHash -LiteralPath "$alignInput\$name").Hash) "Align must preserve original bytes: $name"
+        Assert-True ((Get-FileHash -LiteralPath "$alignOutput\$name").Hash -eq (Get-FileHash -LiteralPath "$alignInput\$name").Hash) "Sort must preserve original bytes: $name"
     }
-    Assert-True (Test-Path -LiteralPath "$alignOutput\empty" -PathType Container) 'Align must preserve empty directories.'
-    Assert-True ($response.Out.Contains('CSV 파일=6 정렬=2 미변경=2 제외(원문 복사)=2 비CSV 복사=1') -and $response.Out.Contains('Duplicate.csv') -and $response.Out.Contains('Duplicate ID') -and $response.Out.Contains('Malformed.csv')) 'Align must report actual counts and per-file reasons.'
-    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Filter 'AlarmDiff_*.txt').Count -eq 0) 'Align does not create a comparison report.'
-    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Align changed source bytes or folder structure.'
-    Passed 'Align: numeric order, comment blocks, recursive copy, original bytes and exclusions'
+    Assert-True (Test-Path -LiteralPath "$alignOutput\empty" -PathType Container) 'Sort must preserve empty directories.'
+    Assert-True ($response.Out.Contains('CSV 파일=6 정렬=2 미변경=2 제외(원문 복사)=2 비CSV 복사=1') -and $response.Out.Contains('Duplicate.csv') -and $response.Out.Contains('Duplicate ID') -and $response.Out.Contains('Malformed.csv')) 'Sort must report actual counts and per-file reasons.'
+    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Filter 'AlarmDiff_*.txt').Count -eq 0) 'Sort does not create a comparison report.'
+    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Sort changed source bytes or folder structure.'
+    Passed 'Sort: numeric order, comment blocks, recursive copy, original bytes and exclusions'
 
     $firstAlignHash = Tree-Hash $alignOutput
     $response = Invoke-Console $alignExe ('2' + $lf + $alignInput + $lf)
-    Assert-True ($response.Code -eq 2 -and (Tree-Hash $alignOutput) -ceq $firstAlignHash) 'Repeated Align must preserve its previous output.'
-    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Directory -Filter 'Align_정렬 대상_*').Count -eq 1) 'Repeated Align must create a unique prefixed directory.'
+    Assert-True ($response.Code -eq 2 -and (Tree-Hash $alignOutput) -ceq $firstAlignHash) 'Repeated Sort must preserve its previous output.'
+    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Directory -Filter 'Sort_정렬 대상_*').Count -eq 1) 'Repeated Sort must create a unique prefixed directory.'
     $noCsv = Join-Path $fixture 'no-csv'
     New-Item -ItemType Directory -Path $noCsv | Out-Null
     Put-Text "$noCsv\note.txt" 'no alarms'
     $response = Invoke-Console $alignExe ('2' + $lf + $noCsv + $lf)
-    Assert-True ($response.Code -eq 0 -and $response.Out.Contains('알람 CSV 파일이 없습니다') -and !(Test-Path -LiteralPath "$alignTools\Align_no-csv")) 'No CSV means no output folder and normal completion.'
+    Assert-True ($response.Code -eq 0 -and $response.Out.Contains('알람 CSV 파일이 없습니다') -and !(Test-Path -LiteralPath "$alignTools\Sort_no-csv")) 'No CSV means no output folder and normal completion.'
     $cleanAlign = Join-Path $fixture 'clean-align'
     New-Item -ItemType Directory -Path $cleanAlign | Out-Null
     Put-Text "$cleanAlign\Clean.csv" ($header + $lf + (Row '10') + $lf + (Row '2'))
     $response = Invoke-Console $alignExe ('2' + $lf + $cleanAlign + $lf)
-    Assert-True ($response.Code -eq 0 -and [IO.File]::ReadAllText("$alignTools\Align_clean-align\Clean.csv") -ceq ($header + $lf + (Row '2') + $lf + (Row '10'))) 'Valid Align must exit successfully.'
-    Passed 'Align: repeated results, no CSV and clean completion'
+    Assert-True ($response.Code -eq 0 -and [IO.File]::ReadAllText("$alignTools\Sort_clean-align\Clean.csv") -ceq ($header + $lf + (Row '2') + $lf + (Row '10'))) 'Valid Sort must exit successfully.'
+    Passed 'Sort: repeated results, no CSV and clean completion'
 
     $alignOutputsBeforeFailure = Tree-Hash $alignTools
     foreach ($inputText in @('', ('bad' + $lf), ('2' + $lf), ('2' + $lf + "$fixture\missing" + $lf), ('2' + $lf + $alignTools + $lf))) {
@@ -364,10 +364,10 @@ try {
     }
     $lock = [IO.File]::Open("$alignInput\Main.csv", [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     try { $response = Invoke-Console $alignExe ('2' + $lf + $alignInput + $lf) } finally { $lock.Dispose() }
-    Assert-True ($response.Code -eq 1 -and $response.Err.Contains('입력 전체를 읽지 못해')) 'Unreadable Align input must abort the entire operation.'
-    Assert-True ((Tree-Hash $alignTools) -ceq $alignOutputsBeforeFailure) 'Failed Align must not leave output or modify existing results.'
-    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Align failure changed its input.'
-    Passed 'Align: menu/path validation, read failure and containment protection'
+    Assert-True ($response.Code -eq 1 -and $response.Err.Contains('입력 전체를 읽지 못해')) 'Unreadable Sort input must abort the entire operation.'
+    Assert-True ((Tree-Hash $alignTools) -ceq $alignOutputsBeforeFailure) 'Failed Sort must not leave output or modify existing results.'
+    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Sort failure changed its input.'
+    Passed 'Sort: menu/path validation, read failure and containment protection'
 
     Assert-True (@(Get-ChildItem -LiteralPath $fixture -Recurse -Directory -Filter 'Alarm.pending_*').Count -eq 0) 'Temporary output leaked.'
     Write-Host "$passed integration scenarios passed."
