@@ -72,6 +72,9 @@ function Invoke-Console([string]$Program, [string]$InputText) {
     Send-Input $session $InputText
     return End-Console $session
 }
+function Invoke-Compare([string]$Program, [string]$InputText) {
+    return Invoke-Console $Program ('1' + $lf + $InputText)
+}
 function Passed([string]$Name) {
     $script:passed++
     Write-Host "PASS $Name"
@@ -114,7 +117,7 @@ try {
     $beforeOld = Tree-Hash $old
     $beforeNew = Tree-Hash $new
 
-    $response = Invoke-Console $exe ('"' + $old + '"' + $lf + '"' + $new + '"' + $lf + 'N' + $lf)
+    $response = Invoke-Compare $exe ('"' + $old + '"' + $lf + '"' + $new + '"' + $lf + 'N' + $lf)
     Assert-True ($response.Code -eq 2) "N exit code: $($response.Code) $($response.Err)"
     Assert-True (!(Test-Path -LiteralPath "$tools\Alarm")) 'N must not generate an Alarm folder.'
     $reports = @(Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt')
@@ -154,7 +157,7 @@ try {
     Assert-True ($reportBytes[0] -eq 239 -and $reportBytes[1] -eq 187 -and $reportBytes[2] -eq 191) 'Report must have UTF-8 BOM.'
     Passed 'N: report, exact ID differences, no output folder'
 
-    $response = Invoke-Console $exe ($old + $lf + $new + $lf + 'Y' + $lf + 'N' + $lf)
+    $response = Invoke-Compare $exe ($old + $lf + $new + $lf + 'Y' + $lf + 'N' + $lf)
     Assert-True ($response.Code -eq 2) "Y exit code: $($response.Code) $($response.Err)"
     Assert-True ($response.Out.Contains('대상 0건') -and $response.Out.Contains('설명용 예제') -and $response.Out.Contains('적용할까요?')) 'Zero targets still show an illustrative example and question.'
     Assert-True ([IO.File]::ReadAllText("$tools\Alarm\BM.csv") -ceq $expectedBm) 'BM.csv merge mismatch.'
@@ -176,26 +179,26 @@ try {
     Passed 'Y: merge, nested files, case matching, exclusions, binary and empty directory copy'
 
     $firstOutputHash = Tree-Hash "$tools\Alarm"
-    $response = Invoke-Console $exe ($old + $lf + $new + $lf + 'Y' + $lf)
+    $response = Invoke-Compare $exe ($old + $lf + $new + $lf + 'Y' + $lf)
     Assert-True ($response.Code -eq 2) 'Repeated Y should succeed with exclusions.'
     Assert-True ((Tree-Hash "$tools\Alarm") -ceq $firstOutputHash) 'Existing Alarm output was overwritten.'
     Assert-True (@(Get-ChildItem -LiteralPath $tools -Directory -Filter 'Alarm_*').Count -eq 1) 'Timestamp result directory missing.'
     Assert-True (@(Get-ChildItem -LiteralPath $tools -Filter 'AlarmDiff_*.txt').Count -eq 3) 'Reports must not overwrite.'
     Passed 'Repeated run: previous folder and report preserved'
 
-    $response = Invoke-Console $exe ($old + $lf + $new + $lf + 'invalid' + $lf + 'n' + $lf)
+    $response = Invoke-Compare $exe ($old + $lf + $new + $lf + 'invalid' + $lf + 'n' + $lf)
     Assert-True ($response.Code -eq 2 -and $response.Out.Contains('Y 또는 N')) 'Invalid answer must re-prompt.'
-    $response = Invoke-Console $exe ($old + $lf + $new + $lf)
+    $response = Invoke-Compare $exe ($old + $lf + $new + $lf)
     Assert-True ($response.Code -eq 2) 'EOF should act as N.'
     Passed 'Y/N validation and EOF cancellation'
 
     $lock = [IO.File]::Open("$old\BM.csv", [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-    try { $response = Invoke-Console $exe ($old + $lf + $new + $lf + 'Y' + $lf) } finally { $lock.Dispose() }
+    try { $response = Invoke-Compare $exe ($old + $lf + $new + $lf + 'Y' + $lf) } finally { $lock.Dispose() }
     Assert-True ($response.Code -eq 1 -and $response.Out.Contains('DISABLED')) 'Unreadable input must disable generation.'
     Assert-True (@(Get-ChildItem -LiteralPath $tools -Directory -Filter 'Alarm*').Count -eq 2) 'Failed inventory must not generate output.'
     Passed 'Read failure: diff recorded, generation disabled'
 
-    $response = Invoke-Console $exe ($tools + $lf + $new + $lf + 'Y' + $lf)
+    $response = Invoke-Compare $exe ($tools + $lf + $new + $lf + 'Y' + $lf)
     Assert-True ($response.Code -eq 1) 'Executable inside input must be rejected.'
     Assert-True ((Tree-Hash $old) -ceq $beforeOld) 'OLD source changed.'
     Assert-True ((Tree-Hash $new) -ceq $beforeNew) 'NEW source changed.'
@@ -207,7 +210,7 @@ try {
     Copy-Item -LiteralPath $ExePath -Destination $snapshotExe
     $session = Start-Console $snapshotExe
     try {
-        Send-Input $session ($old + $lf + $new + $lf) $false
+        Send-Input $session ('1' + $lf + $old + $lf + $new + $lf) $false
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
         while (!(Get-ChildItem -LiteralPath $snapshotTools -Filter 'AlarmDiff_*.txt')) {
             if ($session.Process.HasExited -or [DateTime]::UtcNow -gt $deadline) { throw 'Comparison did not reach report stage.' }
@@ -255,7 +258,7 @@ try {
         New-Item -ItemType Directory -Path $modeTools | Out-Null
         $modeExe = Join-Path $modeTools 'SCTC_Alarm_Compare.exe'
         Copy-Item -LiteralPath $ExePath -Destination $modeExe
-        $response = Invoke-Console $modeExe ($modeOld + $lf + $modeNew + $lf + $choice.Input)
+        $response = Invoke-Compare $modeExe ($modeOld + $lf + $modeNew + $lf + $choice.Input)
         Assert-True ($response.Code -eq 0) "Mode choice $($choice.Name) failed: $($response.Err)"
         Assert-True ($response.Out.Contains('대상 3건') -and $response.Out.Contains('File: Modes.csv') -and $response.Out.Contains('[TREATMODE] ID="A" Column=9') -and $response.Out.Contains('Y 선택 시 출력 Mode') -and $response.Out.Contains('N 선택 시 출력 Mode')) 'Actual example must use first sorted file/ID/column.'
         $selectedRun = '"EMGStop:4|5|6",'
@@ -290,7 +293,7 @@ try {
         New-Item -ItemType Directory -Path $encodingTools | Out-Null
         $encodingExe = Join-Path $encodingTools 'SCTC_Alarm_Compare.exe'
         Copy-Item -LiteralPath $ExePath -Destination $encodingExe
-        $response = Invoke-Console $encodingExe ($encodingOld + $lf + $encodingNew + $lf + 'Y' + $lf + $choice + $lf)
+        $response = Invoke-Compare $encodingExe ($encodingOld + $lf + $encodingNew + $lf + 'Y' + $lf + $choice + $lf)
         $expectedCode = if ($choice -eq 'Y') { 2 } else { 0 }
         Assert-True ($response.Code -eq $expectedCode) 'Final exit code must reflect selected output encoding failures.'
         $expectedText = if ($choice -eq 'Y') { $encodingPatch } else { $header + $crlf + (Row 'A' 'Ignore:0' 'OLD' 'Same' '패치') }
@@ -299,6 +302,73 @@ try {
         Assert-True ($encodingReport.Contains('[AUTOCHANGE EXCLUDED]') -eq ($choice -eq 'Y')) 'Encoding diagnostics must match the actual generation choice.'
     }
     Passed 'Selected encoding validation, whole-file fallback and exit code'
+
+    $alignInput = Join-Path $fixture '정렬 대상'
+    $alignTools = Join-Path $fixture 'align-tools'
+    foreach ($dir in @($alignInput, "$alignInput\sub", "$alignInput\empty", $alignTools)) {
+        New-Item -ItemType Directory -Path $dir | Out-Null
+    }
+    $alignExe = Join-Path $alignTools 'SCTC_Alarm_Compare.exe'
+    Copy-Item -LiteralPath $ExePath -Destination $alignExe
+    $rowTen = Row '10' ' Ignore:0 ' 'Setup:2' '' '설명, "따옴표"'
+    $rowTwo = Row '2'
+    $rowOne = Row '001'
+    $alignPrefix = '# preamble' + $lf + $header + $lf
+    $alignText = $alignPrefix + '# ten' + $lf + $rowTen + $lf + $lf + '# two' + $lf + $rowTwo + $lf + '# one' + $lf + $rowOne + $lf + '# footer'
+    $alignExpected = $alignPrefix + '# one' + $lf + $rowOne + $lf + $lf + '# two' + $lf + $rowTwo + $lf + '# ten' + $lf + $rowTen + $lf + '# footer'
+    Put-Text "$alignInput\Main.csv" $alignText
+    Put-Text "$alignInput\sub\Main.CSV" ($header + $crlf + (Row '100') + $crlf + (Row '2'))
+    Put-Text "$alignInput\Sorted.csv" ($header + $crlf + (Row '1') + $crlf + (Row '10') + $crlf)
+    Put-Text "$alignInput\Empty.csv" ($header + $lf + '# no data')
+    Put-Text "$alignInput\Duplicate.csv" ($header + $lf + (Row '10') + $lf + (Row '2') + $lf + (Row '2'))
+    Put-Text "$alignInput\Malformed.csv" ($header + $lf + '1,short')
+    [IO.File]::WriteAllBytes("$alignInput\payload.bin", [byte[]](0, 255, 129, 13, 10))
+    $alignBefore = Tree-Hash $alignInput
+    $response = Invoke-Console $alignExe ('invalid' + $lf + ' 2 ' + $lf + '"' + $alignInput + '"' + $lf)
+    Assert-True ($response.Code -eq 2) "Align exit code: $($response.Code) $($response.Err)"
+    Assert-True ($response.Out.Contains('1: Compare') -and $response.Out.Contains('2: Align') -and $response.Out.Contains('1 또는 2')) 'Startup menu must validate mode selection.'
+    Assert-True ($response.Out.IndexOf('선택 [1/2]') -lt $response.Out.IndexOf('Alarm Folder Path (Align)')) 'Menu must precede path input.'
+    Assert-True (!$response.Out.Contains('Alarm Folder Path2') -and !$response.Out.Contains('AutoChange?') -and !$response.Out.Contains('적용할까요?')) 'Align accepts one path without Compare prompts.'
+    $alignOutput = Join-Path $alignTools 'Align_정렬 대상'
+    Assert-True ([IO.File]::ReadAllText("$alignOutput\Main.csv") -ceq $alignExpected) 'Align must move comments and blanks with the following alarm row, retaining prefix and footer.'
+    Assert-True ([IO.File]::ReadAllText("$alignOutput\sub\Main.CSV") -ceq ($header + $crlf + (Row '2') + $crlf + (Row '100'))) 'Nested CSV must retain filename, path, CRLF and no final newline.'
+    foreach ($name in @('Sorted.csv', 'Empty.csv', 'Duplicate.csv', 'Malformed.csv', 'payload.bin')) {
+        Assert-True ((Get-FileHash -LiteralPath "$alignOutput\$name").Hash -eq (Get-FileHash -LiteralPath "$alignInput\$name").Hash) "Align must preserve original bytes: $name"
+    }
+    Assert-True (Test-Path -LiteralPath "$alignOutput\empty" -PathType Container) 'Align must preserve empty directories.'
+    Assert-True ($response.Out.Contains('CSV 파일=6 정렬=2 미변경=2 제외(원문 복사)=2 비CSV 복사=1') -and $response.Out.Contains('Duplicate.csv') -and $response.Out.Contains('Duplicate ID') -and $response.Out.Contains('Malformed.csv')) 'Align must report actual counts and per-file reasons.'
+    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Filter 'AlarmDiff_*.txt').Count -eq 0) 'Align does not create a comparison report.'
+    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Align changed source bytes or folder structure.'
+    Passed 'Align: numeric order, comment blocks, recursive copy, original bytes and exclusions'
+
+    $firstAlignHash = Tree-Hash $alignOutput
+    $response = Invoke-Console $alignExe ('2' + $lf + $alignInput + $lf)
+    Assert-True ($response.Code -eq 2 -and (Tree-Hash $alignOutput) -ceq $firstAlignHash) 'Repeated Align must preserve its previous output.'
+    Assert-True (@(Get-ChildItem -LiteralPath $alignTools -Directory -Filter 'Align_정렬 대상_*').Count -eq 1) 'Repeated Align must create a unique prefixed directory.'
+    $noCsv = Join-Path $fixture 'no-csv'
+    New-Item -ItemType Directory -Path $noCsv | Out-Null
+    Put-Text "$noCsv\note.txt" 'no alarms'
+    $response = Invoke-Console $alignExe ('2' + $lf + $noCsv + $lf)
+    Assert-True ($response.Code -eq 0 -and $response.Out.Contains('알람 CSV 파일이 없습니다') -and !(Test-Path -LiteralPath "$alignTools\Align_no-csv")) 'No CSV means no output folder and normal completion.'
+    $cleanAlign = Join-Path $fixture 'clean-align'
+    New-Item -ItemType Directory -Path $cleanAlign | Out-Null
+    Put-Text "$cleanAlign\Clean.csv" ($header + $lf + (Row '10') + $lf + (Row '2'))
+    $response = Invoke-Console $alignExe ('2' + $lf + $cleanAlign + $lf)
+    Assert-True ($response.Code -eq 0 -and [IO.File]::ReadAllText("$alignTools\Align_clean-align\Clean.csv") -ceq ($header + $lf + (Row '2') + $lf + (Row '10'))) 'Valid Align must exit successfully.'
+    Passed 'Align: repeated results, no CSV and clean completion'
+
+    $alignOutputsBeforeFailure = Tree-Hash $alignTools
+    foreach ($inputText in @('', ('bad' + $lf), ('2' + $lf), ('2' + $lf + "$fixture\missing" + $lf), ('2' + $lf + $alignTools + $lf))) {
+        $response = Invoke-Console $alignExe $inputText
+        Assert-True ($response.Code -eq 1) 'Menu/path EOF and invalid/contained paths must abort without generation.'
+    }
+    $lock = [IO.File]::Open("$alignInput\Main.csv", [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try { $response = Invoke-Console $alignExe ('2' + $lf + $alignInput + $lf) } finally { $lock.Dispose() }
+    Assert-True ($response.Code -eq 1 -and $response.Err.Contains('입력 전체를 읽지 못해')) 'Unreadable Align input must abort the entire operation.'
+    Assert-True ((Tree-Hash $alignTools) -ceq $alignOutputsBeforeFailure) 'Failed Align must not leave output or modify existing results.'
+    Assert-True ((Tree-Hash $alignInput) -ceq $alignBefore) 'Align failure changed its input.'
+    Passed 'Align: menu/path validation, read failure and containment protection'
+
     Assert-True (@(Get-ChildItem -LiteralPath $fixture -Recurse -Directory -Filter 'Alarm.pending_*').Count -eq 0) 'Temporary output leaked.'
     Write-Host "$passed integration scenarios passed."
 } finally {

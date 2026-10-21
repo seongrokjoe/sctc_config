@@ -24,12 +24,14 @@
     <ClCompile Include="src\AlarmCore.cpp" />
     <ClCompile Include="src\WinIo.cpp" />
     <ClCompile Include="src\MergeEngine.cpp" />
+    <ClCompile Include="src\AlignEngine.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\AlarmCore.h" />
     <ClInclude Include="src\WinIo.h" />
     <ClInclude Include="src\MergeEngine.h" />
+    <ClInclude Include="src\AlignEngine.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

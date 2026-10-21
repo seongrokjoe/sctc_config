@@ -1,5 +1,6 @@
 ﻿#include "AlarmCore.h"
 #include "MergeEngine.h"
+#include "AlignEngine.h"
 #include "WinIo.h"
 
 #include <algorithm>
@@ -648,6 +649,136 @@ namespace
         RemoveOwnedTree(fixture, parent);
     }
 
+    void AlignNumericRows()
+    {
+        const std::vector<std::wstring> ids = { L"100", L" 2 ", L"10", L"001", L"1", L"000", L"0",
+            L"184467440737095516160000", L"99999999999999999999", L"A2", L"A10", L"a1" };
+        const size_t expectedOrder[] = { 5, 6, 3, 4, 1, 2, 0, 8, 7, 10, 9, 11 };
+        std::wstring input = Header, expected = Header;
+        for (const auto& id : ids) input += L"\n" + R(id, L" Ignore : 0 ", L"S", L"", L"memo, \"quoted\"");
+        for (const auto index : expectedOrder)
+            expected += L"\n" + R(ids[index], L" Ignore : 0 ", L"S", L"", L"memo, \"quoted\"");
+        const auto bytes = B(input), before = bytes;
+        const auto result = AlignCsv(bytes);
+        Check(!result.skipped && result.changed && result.rows == ids.size() && result.output == B(expected),
+            "Align uses numeric order, stable equal numeric keys, unbounded numbers and trailing text IDs");
+        Check(bytes == before, "Align never changes source bytes");
+        const auto again = AlignCsv(result.output);
+        Check(!again.skipped && !again.changed && again.output == result.output, "Alignment is idempotent");
+    }
+
+    void AlignBlocksAndEncodings()
+    {
+        const std::vector<std::wstring> text = {
+            L"# file preamble", L"", Header, L"# id 10", L"",
+            L"\"10\",name,WARN,Cat,Module,Sub,\"설명, \"\"인용\"\"\", Ignore:0 ,\"Setup:2\",",
+            L"  # id 2", R(L"2", L"Ignore:1", L"S", L"D", L"한글"),
+            L"", L"# id 1", R(L"1", L"EMG:5|6")
+        };
+        const size_t expectedOrder[] = { 0, 1, 2, 8, 9, 10, 6, 7, 3, 4, 5 };
+        const Encoding encodings[] = { Encoding::Utf8, Encoding::Utf8, Encoding::Cp949, Encoding::Utf16Le, Encoding::Utf16Be };
+        const bool boms[] = { false, true, false, true, true };
+        for (size_t e = 0; e < 5; ++e)
+        {
+            for (bool footer : { false, true })
+            {
+                for (bool finalNewline : { false, true })
+                {
+                    Document original;
+                    original.encoding = encodings[e];
+                    original.bom = boms[e];
+                    for (size_t i = 0; i < text.size(); ++i)
+                        original.lines.push_back({ text[i], i % 3 == 0 ? L"\r\n" : i % 3 == 1 ? L"\n" : L"\r" });
+                    if (footer)
+                    {
+                        original.lines.push_back({ L"", L"\r\n" });
+                        original.lines.push_back({ L"# footer", L"\n" });
+                    }
+                    if (!finalNewline) original.lines.back().ending.clear();
+                    auto expected = original;
+                    for (size_t i = 0; i < text.size(); ++i) expected.lines[i].text = text[expectedOrder[i]];
+                    const auto bytes = EncodeDocument(original);
+                    const auto result = AlignCsv(bytes);
+                    Check(!result.skipped && result.changed && result.output == EncodeDocument(expected),
+                        "Align moves preceding comments/blanks with raw rows, preserving prefix/footer and positional endings");
+                    const auto parsed = ParseCsv(result.output);
+                    Check(parsed.errors.empty() && parsed.headerLine == 2 && parsed.rows.size() == 3 &&
+                        parsed.rows[0].id == L"1" && parsed.rows[1].id == L"2" && parsed.rows[2].id == L"10" &&
+                        parsed.document.encoding == encodings[e] && parsed.document.bom == boms[e],
+                        "Aligned CSV retains encoding, BOM, header and numeric IDs");
+                    Check(parsed.document.lines[parsed.rows[2].line].text == text[5],
+                        "Quoted IDs, trailing empty fields and all raw formatting remain exact");
+                }
+            }
+        }
+    }
+
+    void AlignInvalidAndUnchangedFiles()
+    {
+        const std::vector<Bytes> invalid = {
+            B(L""), B(L"# comment only"), B(L"few,columns"),
+            B(Header + L"\nshort,row"),
+            B(Header + L"\n" + R(L"2") + L"\n" + R(L" 2 ")),
+            B(Header + L"\n" + R(L"")),
+            B(Header + L"\n2,name,WARN,Cat,Module,Sub,\"bad quote,RUN,SETUP,DEF"),
+            Bytes{ 0xef, 0xbb, 0xbf, 0xff }
+        };
+        for (const auto& bytes : invalid)
+        {
+            const auto result = AlignCsv(bytes);
+            Check(result.skipped && !result.changed && result.output == bytes && !result.diagnostics.empty(),
+                "Invalid CSV is retained byte-for-byte with a reason");
+        }
+        const std::vector<std::wstring> unchanged = {
+            L"# preamble\n" + Header + L"\r\n\n# footer",
+            Header + L"\n" + R(L"42"),
+            Header + L"\n# two\n" + R(L"2") + L"\n# ten\n" + R(L"10") + L"\n" + R(L"100")
+        };
+        for (const auto& text : unchanged)
+        {
+            const auto bytes = B(text, Encoding::Utf8, true);
+            const auto result = AlignCsv(bytes);
+            Check(!result.skipped && !result.changed && result.output == bytes,
+                "Header-only, single-row and sorted CSVs retain exact bytes");
+        }
+        // Moving the blank before ID 1 to after a CR would combine it with LF.
+        const auto boundary = B(Header + L"\r" + R(L"2") + L"\n\n" + R(L"1"));
+        const auto result = AlignCsv(boundary);
+        Check(result.skipped && !result.changed && result.output == boundary && !result.diagnostics.empty(),
+            "Alignment excludes a file if mixed line endings would consume a blank line");
+    }
+
+    void AlignFailureRollback()
+    {
+        const auto parent = ExecutableDirectory();
+        const auto fixture = CreateStagingDirectory(parent);
+        try
+        {
+            const auto input = JoinPath(fixture, std::wstring(250, L'x'));
+            const auto output = JoinPath(fixture, L"out");
+            CreateDirectoryNew(input);
+            CreateDirectoryNew(output);
+            const auto bytes = B(Header + L"\n" + R(L"10") + L"\n" + R(L"2"));
+            WriteNewBytes(JoinPath(input, L"Alarm.csv"), bytes);
+            bool failed = false;
+            try { AlignFolder(input, input); }
+            catch (const IoError&) { failed = true; }
+            Check(failed, "Align engine rejects output inside input");
+            failed = false;
+            // The input basename is valid, but adding Align_ exceeds the volume's
+            // 255-character component limit, failing publication after staging.
+            try { AlignFolder(input, output); }
+            catch (const IoError&) { failed = true; }
+            Check(failed, "Align publication failure is surfaced");
+            const auto remaining = TakeSnapshot(output);
+            Check(remaining.errors.empty() && remaining.files.empty() && remaining.directories.empty(),
+                "Failed Align removes its own staged output");
+            Check(ReadBytes(JoinPath(input, L"Alarm.csv")) == bytes, "Failure preserves original input");
+        }
+        catch (...) { RemoveOwnedTree(fixture, parent); throw; }
+        RemoveOwnedTree(fixture, parent);
+    }
+
     void ExclusiveOutputCreation()
     {
         const auto parent = ExecutableDirectory();
@@ -710,6 +841,10 @@ int main()
         {"SelectedEncodingExclusionAndReport", SelectedEncodingExclusionAndReport},
         {"ReportCategoriesAndOmissions", ReportCategoriesAndOmissions},
         {"IoFailureRollback", IoFailureRollback},
+        {"AlignNumericRows", AlignNumericRows},
+        {"AlignBlocksAndEncodings", AlignBlocksAndEncodings},
+        {"AlignInvalidAndUnchangedFiles", AlignInvalidAndUnchangedFiles},
+        {"AlignFailureRollback", AlignFailureRollback},
         {"ExclusiveOutputCreation", ExclusiveOutputCreation}
     };
     size_t failed = 0;

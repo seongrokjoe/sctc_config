@@ -41,6 +41,7 @@ namespace alarm
     {
         Document document;
         std::vector<std::wstring> headers;
+        size_t headerLine = 0;
         std::vector<Row> rows;
         std::map<std::wstring, size_t> ids;
         std::vector<std::wstring> errors;
@@ -110,4 +111,15 @@ namespace alarm
     };
 
     MergeResult MergeCsv(const Bytes* oldBytes, const Bytes* newBytes, const MergeOptions& options);
+
+    struct AlignCsvResult
+    {
+        Bytes output;
+        std::wstring diagnostics;
+        size_t rows = 0;
+        bool changed = false;
+        bool skipped = false;
+    };
+
+    AlignCsvResult AlignCsv(const Bytes& bytes);
 }

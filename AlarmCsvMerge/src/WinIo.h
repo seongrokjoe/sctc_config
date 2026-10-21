@@ -47,7 +47,8 @@ namespace alarm
     std::wstring WriteUniqueReport(const std::wstring& directory, const std::wstring& text);
     void CreateDirectoryNew(const std::wstring& path);
     std::wstring CreateStagingDirectory(const std::wstring& directory);
-    std::wstring PublishDirectory(const std::wstring& staging, const std::wstring& directory);
+    std::wstring PublishDirectory(const std::wstring& staging, const std::wstring& directory,
+        const std::wstring& baseName = L"Alarm");
     // Only remove a tree created by this run. Reparse points are refused.
     void RemoveOwnedTree(const std::wstring& path, const std::wstring& allowedParent);
 }

@@ -150,6 +150,25 @@ namespace alarm
             if (oldMode.treat != newMode.treat) return ModeDifference::TreatMode;
             return ModeDifference::None;
         }
+
+        bool AlarmIdLess(const std::wstring& a, const std::wstring& b)
+        {
+            auto numeric = [](const std::wstring& id)
+            {
+                return !id.empty() && std::all_of(id.begin(), id.end(),
+                    [](wchar_t c) { return c >= L'0' && c <= L'9'; });
+            };
+            const bool aNumeric = numeric(a), bNumeric = numeric(b);
+            if (aNumeric != bNumeric) return aNumeric;
+            if (!aNumeric) return a < b;
+            // Compare significant digit strings, avoiding integer overflow.
+            auto aStart = a.find_first_not_of(L'0'), bStart = b.find_first_not_of(L'0');
+            if (aStart == std::wstring::npos) aStart = a.size();
+            if (bStart == std::wstring::npos) bStart = b.size();
+            const auto aLength = a.size() - aStart, bLength = b.size() - bStart;
+            if (aLength != bLength) return aLength < bLength;
+            return a.compare(aStart, aLength, b, bStart, bLength) < 0;
+        }
     }
 
     std::wstring Trim(const std::wstring& value)
@@ -317,6 +336,7 @@ namespace alarm
             if (!header)
             {
                 header = true;
+                csv.headerLine = i;
                 for (const auto& field : fields) csv.headers.push_back(Trim(field.value));
                 if (csv.headers.size() < 10)
                 {
@@ -511,6 +531,65 @@ namespace alarm
             std::string message = error.what();
             result.diagnostics = L"[AUTOCHANGE EXCLUDED] " + std::wstring(message.begin(), message.end()) +
                 L"; PatchSet bytes will be copied unchanged.\r\n";
+        }
+        return result;
+    }
+
+    AlignCsvResult AlignCsv(const Bytes& bytes)
+    {
+        AlignCsvResult result;
+        result.output = bytes;
+        const auto csv = ParseCsv(bytes);
+        result.rows = csv.rows.size();
+        if (!csv.errors.empty())
+        {
+            result.skipped = true;
+            result.diagnostics = DescribeErrors(L"Align", csv);
+            return result;
+        }
+        std::vector<size_t> order;
+        for (size_t i = 0; i < csv.rows.size(); ++i) order.push_back(i);
+        std::stable_sort(order.begin(), order.end(), [&csv](size_t a, size_t b)
+        {
+            return AlarmIdLess(csv.rows[a].id, csv.rows[b].id);
+        });
+        // Equal numeric values (e.g. 001 and 1) keep their source order.
+        if (std::is_sorted(order.begin(), order.end())) return result;
+
+        Document aligned = csv.document;
+        size_t target = csv.headerLine + 1;
+        for (const auto index : order)
+        {
+            const auto first = index == 0 ? csv.headerLine + 1 : csv.rows[index - 1].line + 1;
+            // Move the preceding comments/blanks with this row. Header/preamble
+            // and trailing comments stay in place. Endings belong to output slots.
+            for (size_t source = first; source <= csv.rows[index].line; ++source)
+                aligned.lines[target++].text = csv.document.lines[source].text;
+        }
+        try
+        {
+            auto output = EncodeDocument(aligned);
+            const auto check = ParseCsv(output);
+            if (!check.errors.empty() || check.rows.size() != csv.rows.size() ||
+                check.document.lines.size() != aligned.lines.size())
+                throw Error("Aligned CSV failed validation; original bytes retained");
+            // In particular, a moved empty line must not join a CR and LF into
+            // one line ending. Reject that file rather than lose a blank line.
+            for (size_t i = 0; i < aligned.lines.size(); ++i)
+                if (check.document.lines[i].text != aligned.lines[i].text ||
+                    check.document.lines[i].ending != aligned.lines[i].ending)
+                    throw Error("Aligned line boundaries changed; original bytes retained");
+            for (size_t i = 0; i < order.size(); ++i)
+                if (check.document.lines[check.rows[i].line].text != csv.document.lines[csv.rows[order[i]].line].text)
+                    throw Error("Aligned alarm row changed; original bytes retained");
+            result.changed = output != bytes;
+            result.output = std::move(output);
+        }
+        catch (const std::exception& error)
+        {
+            result.skipped = true;
+            std::string message = error.what();
+            result.diagnostics = L"[ALIGN EXCLUDED] " + std::wstring(message.begin(), message.end()) + L"\r\n";
         }
         return result;
     }

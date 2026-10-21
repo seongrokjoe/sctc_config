@@ -373,12 +373,16 @@ namespace alarm
         throw IoError(L"Unable to allocate staging directory");
     }
 
-    std::wstring PublishDirectory(const std::wstring& staging, const std::wstring& directory)
+    std::wstring PublishDirectory(const std::wstring& staging, const std::wstring& directory,
+        const std::wstring& baseName)
     {
-        auto base = L"Alarm_" + Timestamp();
+        if (baseName.empty() || baseName == L"." || baseName == L".." ||
+            baseName.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos)
+            throw IoError(L"Invalid output folder name: " + baseName);
+        auto base = baseName + L"_" + Timestamp();
         for (unsigned int n = 0; n < 100000; ++n)
         {
-            auto name = n == 0 ? std::wstring(L"Alarm") : base + (n == 1 ? L"" : L"_" + std::to_wstring(n - 1));
+            auto name = n == 0 ? baseName : base + (n == 1 ? L"" : L"_" + std::to_wstring(n - 1));
             auto path = JoinPath(directory, name);
             if (Exists(path)) continue;
             if (MoveFileExW(Native(staging).c_str(), Native(path).c_str(), MOVEFILE_WRITE_THROUGH)) return path;

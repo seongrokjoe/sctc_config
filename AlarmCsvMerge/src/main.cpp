@@ -1,5 +1,7 @@
 ﻿#include "MergeEngine.h"
 
+#include "AlignEngine.h"
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -82,6 +84,21 @@ namespace
         }
         return code;
     }
+
+    int ReadMode()
+    {
+        std::wcout << L"1: Compare\n2: Align\n";
+        for (;;)
+        {
+            std::wcout << L"선택 [1/2]: " << std::flush;
+            std::wstring answer;
+            if (!ReadLine(answer)) return 0;
+            answer = alarm::Trim(answer);
+            if (answer == L"1") return 1;
+            if (answer == L"2") return 2;
+            std::wcout << L"1 또는 2를 입력해주세요.\n";
+        }
+    }
 }
 
 int wmain()
@@ -89,10 +106,25 @@ int wmain()
     ConfigureConsole();
     try
     {
-        std::wcout << L"AlarmCsvMerge - Alarm CSV 비교 및 StopMode 적용\n"
+        std::wcout << L"AlarmCsvMerge - Alarm CSV Compare / Align\n\n";
+        const auto mode = ReadMode();
+        if (!mode) return Finish(1);
+        const auto exeDirectory = alarm::ExecutableDirectory();
+        if (mode == 2)
+        {
+            std::wcout << L"\nAlign - AlarmID 숫자 기준 오름차순 정렬\n"
+                << L"결과는 exe 옆 Align_ 폴더에 저장합니다.\n\n";
+            std::wstring inputPath;
+            if (!ReadFolder(L"Alarm Folder Path (Align): ", exeDirectory, inputPath)) return Finish(1);
+            std::wcout << L"\nCSV 검증 및 정렬 중...\n" << std::flush;
+            const auto aligned = alarm::AlignFolder(inputPath, exeDirectory);
+            if (!aligned.directory.empty()) std::wcout << L"\nAlign 완료\n";
+            std::wcout << aligned.summary;
+            return Finish(aligned.excludedFiles ? 2 : 0);
+        }
+        std::wcout << L"\nCompare - Alarm CSV 비교 및 StopMode 적용\n"
             << L"Path1 = OLD/Equipment, Path2 = NEW/PatchSet\n"
             << L"결과는 exe 옆 새 Alarm 폴더에 저장합니다.\n\n";
-        const auto exeDirectory = alarm::ExecutableDirectory();
         std::wstring oldPath, newPath;
         if (!ReadFolder(L"Alarm Folder Path1 (OLD/Equipment): ", exeDirectory, oldPath) ||
             !ReadFolder(L"Alarm Folder Path2 (NEW/PatchSet): ", exeDirectory, newPath))
