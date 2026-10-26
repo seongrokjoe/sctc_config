@@ -1,4 +1,4 @@
-## Visual Studio / .NET
+﻿## Visual Studio / .NET
 .vs/
 bin/
 obj/
@@ -51,5 +51,4 @@ test_root/
 Thumbs.db
 Desktop.ini
 .DS_Store
-.claude/
 *.pdb
