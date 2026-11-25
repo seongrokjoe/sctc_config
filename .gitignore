@@ -43,6 +43,7 @@ artifacts/
 
 ## Publish output
 publish/
+/dist/
 
 ## Test data
 test_root/
